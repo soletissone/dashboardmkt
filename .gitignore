@@ -1,5 +1,4 @@
-# Outputs (no subir datos ni HTMLs generados)
-*.html
+# Outputs (no subir datos crudos)
 dashboard_data.json
 *.xlsx
 *.xls
