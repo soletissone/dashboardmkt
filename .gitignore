@@ -1,0 +1,11 @@
+# Outputs (no subir datos ni HTMLs generados)
+*.html
+dashboard_data.json
+*.xlsx
+*.xls
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.env
