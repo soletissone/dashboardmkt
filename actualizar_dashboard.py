@@ -172,12 +172,46 @@ if result2.returncode != 0:
 
 print("OK Dashboard generado OK")
 
+# ── Publicar en GitHub Pages ──────────────────────────────────────────────────
+REPO_DIR = Path(r'C:\Users\USUARIO\Documents\dashboard-semanal-utel')
+INDEX    = REPO_DIR / 'index.html'
+PAGES_URL = 'https://soletissone-hub.github.io/dashboardmkt/'
+
+print("\n[3/3] Publicando en GitHub...")
+try:
+    import shutil
+    shutil.copy(str(OUTPUT), str(INDEX))
+
+    fecha_commit = datetime.now().strftime('%d/%m/%Y')
+    cmds = [
+        ['git', '-C', str(REPO_DIR), 'add', 'index.html'],
+        ['git', '-C', str(REPO_DIR), 'commit', '-m', f'Dashboard actualizado {fecha_commit}'],
+        ['git', '-C', str(REPO_DIR), 'push'],
+    ]
+    git_ok = True
+    for cmd in cmds:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        if r.returncode != 0 and 'nothing to commit' not in r.stdout + r.stderr:
+            print(f"  AVISO git: {r.stderr.strip()[:200]}")
+            git_ok = False
+            break
+
+    if git_ok:
+        print(f"OK Publicado en GitHub Pages")
+        print(f"   URL: {PAGES_URL}")
+    else:
+        print("  (El dashboard se genero OK pero no se pudo subir a GitHub)")
+        print("   Subilo manualmente desde GitHub Desktop o corriendo 'git push'")
+except Exception as e:
+    print(f"  AVISO: no se pudo subir a GitHub automaticamente: {e}")
+
 # ── Resumen final ─────────────────────────────────────────────────────────────
 print()
 print("=" * 60)
 print("  OK DASHBOARD ACTUALIZADO")
-print(f"  Archivo: {OUTPUT}")
-print(f"  Fecha datos: {may_days}/05/2026")
+print(f"  Archivo local : {OUTPUT}")
+print(f"  URL publica   : {PAGES_URL}")
+print(f"  Fecha datos   : {may_days}/05/2026")
 print("=" * 60)
 print()
 
