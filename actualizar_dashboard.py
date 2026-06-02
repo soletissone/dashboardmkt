@@ -62,20 +62,66 @@ leads_file = None
 mats_file  = None
 
 import pandas as pd_tmp
+
+# Solo buscar mats en archivos de la misma semana que el leads file más reciente
+leads_mtime = os.path.getmtime(data_files[0]) if data_files else 0
+ONE_WEEK = 7 * 24 * 3600
+
 for f in data_files:
     try:
-        raw = pd_tmp.read_excel(f, header=None, nrows=2)
+        raw  = pd_tmp.read_excel(f, header=None, nrows=2)
         row1 = [str(x).upper() for x in raw.iloc[1].tolist()]
-        if leads_file is None and any('CANAL' in c or 'PAIS' in c for c in row1):
+
+        # Leads file: MUST have CANAL in row1
+        is_leads = any('CANAL' in c for c in row1)
+        # Mats file: PROGRAMA + 3+ MATR columns, no CANAL, mismo período (7 días)
+        file_age = leads_mtime - os.path.getmtime(f)
+        is_mats  = (not is_leads and
+                    any('PROGRAMA' in c for c in row1) and
+                    sum(1 for c in row1 if 'MATR' in c) >= 3 and
+                    file_age <= ONE_WEEK)
+
+        if leads_file is None and is_leads:
             leads_file = f
-        elif mats_file is None and not any('CANAL' in c or 'PAIS' in c for c in row1):
+        elif mats_file is None and is_mats:
             mats_file = f
     except Exception:
         continue
     if leads_file and mats_file:
         break
-funnel_file = newest('CUADRO EVOLUTIVO*.xlsx')
-precio_file = newest('TABLA_PRECIOS*.xlsx')
+
+# Fallback: si no hay mats separado de esta semana, extraer del archivo de leads
+if not mats_file and leads_file:
+    mats_file = leads_file
+    print(f"  AVISO: sin mats separado esta semana — usando matriculas del archivo de leads")
+
+funnel_prog_medio_file = None
+for f in data_files:
+    try:
+        raw = pd_tmp.read_excel(f, header=None, nrows=2)
+        r0c0 = str(raw.iloc[0, 0]).strip().upper()
+        r1 = [str(x).upper() for x in raw.iloc[1].tolist()[:3]]
+        if r0c0 == 'MES' and 'MEDIO' in r1:
+            funnel_prog_medio_file = f
+            break
+    except:
+        continue
+
+funnel_prog_file = None
+for f in data_files:
+    try:
+        raw = pd_tmp.read_excel(f, header=None, nrows=2)
+        r0 = str(raw.iloc[0, 0]).strip().upper()
+        r1 = [str(x).upper() for x in raw.iloc[1].tolist()]
+        if r0 == 'MES' and any('CONTACTO' in c for c in r1) and f != funnel_prog_medio_file:
+            funnel_prog_file = f
+            break
+    except:
+        continue
+
+funnel_file  = newest('CUADRO EVOLUTIVO*.xlsx')
+precio_file  = newest('TABLA_PRECIOS*.xlsx')
+resumen_file = newest('RESUMEN*.xlsx')
 
 print("=" * 60)
 print("  ACTUALIZADOR DE DASHBOARD SEMANAL")
@@ -84,16 +130,25 @@ print()
 print("Archivos detectados:")
 print(f"  Leads/Programas : {Path(leads_file).name if leads_file else 'ERROR NO ENCONTRADO'}")
 print(f"  Matrículas      : {Path(mats_file).name  if mats_file  else 'ERROR NO ENCONTRADO'}")
+print(f"  Funnel x Prog   : {Path(funnel_prog_file).name if funnel_prog_file else 'OPCIONAL - no encontrado'}")
+print(f"  Funnel Prog×Med : {Path(funnel_prog_medio_file).name if funnel_prog_medio_file else 'OPCIONAL - no encontrado'}")
 print(f"  Contactación    : {Path(funnel_file).name if funnel_file else 'ERROR NO ENCONTRADO'}")
 print(f"  Precios         : {Path(precio_file).name if precio_file else 'ERROR NO ENCONTRADO'}")
+print(f"  Resumen (inv)   : {Path(resumen_file).name if resumen_file else 'ERROR NO ENCONTRADO'}")
 print()
 
 # Verificar que están todos
 missing = []
-if not leads_file:  missing.append("Archivo de leads (data - FECHA.xlsx)")
-if not mats_file:   missing.append("Archivo de matrículas (segundo data - FECHA.xlsx)")
-if not funnel_file: missing.append("CUADRO EVOLUTIVO.xlsx")
-if not precio_file: missing.append("TABLA_PRECIOS.xlsx")
+if not leads_file:   missing.append("Archivo de leads (data - FECHA.xlsx)")
+if not mats_file:    missing.append("Archivo de matrículas (segundo data - FECHA.xlsx)")
+if not funnel_file:  missing.append("CUADRO EVOLUTIVO.xlsx")
+if not precio_file:  missing.append("TABLA_PRECIOS.xlsx")
+if not resumen_file: missing.append("RESUMEN.xlsx (inversión por canal)")
+
+if not funnel_prog_file:
+    print("  AVISO: archivo de funnel x programa (data - *.xlsx con CONTACTO) no encontrado — tab Diagnóstico estará vacío")
+if not funnel_prog_medio_file:
+    print("  AVISO: archivo de funnel x programa×medio no encontrado — sección diagnóstico por medio estará vacía")
 
 if missing:
     print("ERROR Faltan archivos en Downloads:")
@@ -109,14 +164,19 @@ def escape_path(p):
 with open(EXTRACT, encoding='utf-8') as f:
     code = f.read()
 
-# Detectar días de mayo del nombre del archivo (fecha en el nombre)
-# Formato: "data - 2026-05-21T133752.317.xlsx" → día 21
+# Detectar días de mayo según la fecha del archivo
 may_days = 20  # default
-m = re.search(r'data - 2026-05-(\d{2})T', Path(leads_file).name)
-if m:
-    file_day = int(m.group(1))
-    may_days = file_day - 1  # ventas/mats siempre 1 día atrás del archivo
-    print(f"  Archivo del dia {file_day} -> dias de ventas reales: {may_days}")
+fname = Path(leads_file).name
+m_may  = re.search(r'data - 2026-05-(\d{2})T', fname)
+m_jun  = re.search(r'data - 2026-06-(\d{2})T', fname)
+m_later= re.search(r'data - 2026-(?:07|08|09|10|11|12)-\d{2}T', fname)
+if m_may:
+    file_day = int(m_may.group(1))
+    may_days = file_day - 1   # datos al día anterior del archivo
+    print(f"  Archivo mayo dia {file_day} -> dias reales: {may_days}")
+elif m_jun or m_later:
+    may_days = 31             # archivo de junio en adelante = mayo completo
+    print(f"  Archivo de junio+ -> mayo completo: 31 dias")
 
 # Reemplazar paths línea por línea (evita problemas con \ en paths de Windows)
 new_lines = []
@@ -130,6 +190,12 @@ for line in code.splitlines():
         line = f"FUNNEL_FILE = r'{funnel_file}'"
     elif stripped.startswith('PRECIO_FILE'):
         line = f"PRECIO_FILE = r'{precio_file}'"
+    elif stripped.startswith('RESUMEN_FILE'):
+        line = f"RESUMEN_FILE = r'{resumen_file}'"
+    elif stripped.startswith('FUNNEL_PROG_FILE') and funnel_prog_file:
+        line = f"FUNNEL_PROG_FILE = r'{funnel_prog_file}'"
+    elif stripped.startswith('FUNNEL_PROG_MEDIO_FILE') and funnel_prog_medio_file:
+        line = f"FUNNEL_PROG_MEDIO_FILE = r'{funnel_prog_medio_file}'"
     elif stripped.startswith('MAY_DAYS_DONE'):
         line = f"MAY_DAYS_DONE  = {may_days}   # auto-detectado del nombre del archivo"
     new_lines.append(line)

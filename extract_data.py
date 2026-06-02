@@ -18,10 +18,13 @@ def norm_prog(s):
     return s.strip()
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-NEW_FILE    = r'C:\Users\USUARIO\Downloads\data - 2026-05-29T143324.732.xlsx'
-MATS_FILE   = r'C:\Users\USUARIO\Downloads\data - 2026-05-21T133752.317.xlsx'
-FUNNEL_FILE = r'C:\Users\USUARIO\Downloads\CUADRO EVOLUTIVO (5).xlsx'
+NEW_FILE    = r'C:\Users\USUARIO\Downloads\data - 2026-06-01T211234.164.xlsx'
+MATS_FILE   = r'C:\Users\USUARIO\Downloads\data - 2026-06-01T211234.164.xlsx'
+FUNNEL_FILE = r'C:\Users\USUARIO\Downloads\CUADRO EVOLUTIVO (6).xlsx'
 PRECIO_FILE = r'C:\Users\USUARIO\Downloads\TABLA_PRECIOS_2026_ABRIL_COMPLETA (15).xlsx'
+RESUMEN_FILE = r'C:\Users\USUARIO\Downloads\RESUMEN (2).xlsx'
+FUNNEL_PROG_FILE = r'C:\Users\USUARIO\Downloads\data - 2026-06-01T215409.317.xlsx'
+FUNNEL_PROG_MEDIO_FILE = r'C:\Users\USUARIO\Downloads\data - 2026-06-01T221257.291.xlsx'
 
 # ── LOAD PRICING REFERENCE ────────────────────────────────────────────────────
 # New programs (launched April or June 2026)
@@ -44,28 +47,61 @@ for _, row in _cons_df.iterrows():
         _pricing_map[norm_prog(pname)] = tipo
 print(f'Pricing tiers loaded: {len(_pricing_map)}')
 
-# ── LOAD REAL MAY MATRÍCULAS (separate file, mats only by program) ─────────────
-_mats_raw = pd.read_excel(MATS_FILE, header=None)
-_mats_months  = [fix(str(x)) for x in _mats_raw.iloc[0].tolist()]
-_mats_metrics = [fix(str(x)) for x in _mats_raw.iloc[1].tolist()]
-_mats_cols = []
-for m, met in zip(_mats_months, _mats_metrics):
-    if m in ('nan', 'Mes y Año', ''):
-        _mats_cols.append('PROGRAMA')
-    else:
-        _mats_cols.append(f'{m}__{met.strip()}')
-_mats_raw.columns = _mats_cols
-_mdf = _mats_raw.iloc[2:].copy(); _mdf.columns = _mats_cols
-_mdf['PROGRAMA'] = _mdf['PROGRAMA'].apply(fix).str.strip()
-_mdf = _mdf[~_mdf['PROGRAMA'].isin(['nan','','Total','NaN'])]
-_may_mat_col = [c for c in _mats_cols if 'may 2026' in c.lower()][0]
-_mdf[_may_mat_col] = pd.to_numeric(_mdf[_may_mat_col], errors='coerce').fillna(0)
-# Build lookup: norm_prog(name) → real may mats
+# ── LOAD REAL MAY MATRÍCULAS ──────────────────────────────────────────────────
+# Two modes:
+#   A) Separate mats file: PROGRAMA | may 2026__MATRÍCULAS | ... (old format)
+#   B) Same as leads file: PAIS | NIVEL | CANAL | DESCRIPCIÓN PROGRAMA | monthly data
+
 _real_may_mats = {}
-for _, row in _mdf.iterrows():
-    nk = norm_prog(row['PROGRAMA'])
-    _real_may_mats[nk] = int(row[_may_mat_col])
-print(f'Real May mats loaded: {len(_real_may_mats)} programs, total={sum(_real_may_mats.values())}')
+
+_mats_raw = pd.read_excel(MATS_FILE, header=None)
+_r0 = [fix(str(x)).lower() for x in _mats_raw.iloc[0].tolist()]
+_r1 = [fix(str(x)).upper() for x in _mats_raw.iloc[1].tolist()]
+
+_mats_same_as_leads = any('CANAL' in c for c in _r1)
+
+if _mats_same_as_leads:
+    # Mode B: leads file used as mats source — extract from main dataframe
+    # Find column indices for DESCRIPCIÓN PROGRAMA and may 2026 MATRÍCULAS
+    _prog_col_idx = next((i for i, c in enumerate(_r1) if 'PROGRAMA' in c), None)
+    # Find may 2026 MATRÍCULAS column: row0 has 'may 2026', row1 has 'MATR'
+    _may_mat_idx = None
+    for i, (m, met) in enumerate(zip(_r0, _r1)):
+        if 'may 2026' in m and 'MATR' in met:
+            _may_mat_idx = i
+            break
+    if _prog_col_idx is not None and _may_mat_idx is not None:
+        _mdf2 = _mats_raw.iloc[2:].copy().reset_index(drop=True)
+        for _, row in _mdf2.iterrows():
+            prog = fix(str(row.iloc[_prog_col_idx])).strip()
+            if prog in ('nan', '', 'Total', 'NaN') or not prog:
+                continue
+            val = pd.to_numeric(row.iloc[_may_mat_idx], errors='coerce')
+            if pd.notna(val) and val > 0:
+                nk = norm_prog(prog)
+                _real_may_mats[nk] = _real_may_mats.get(nk, 0) + int(val)
+    print(f'Real May mats (from leads file): {len(_real_may_mats)} programs, total={sum(_real_may_mats.values())}')
+else:
+    # Mode A: separate mats file with PROGRAMA column
+    _mats_months  = _r0
+    _mats_metrics = _r1
+    _mats_cols = []
+    for m, met in zip(_mats_months, _mats_metrics):
+        if m in ('nan', 'mes y año', ''):
+            _mats_cols.append('PROGRAMA')
+        else:
+            _mats_cols.append(f'{m}__{met.strip()}')
+    _mats_raw.columns = _mats_cols
+    _mdf = _mats_raw.iloc[2:].copy(); _mdf.columns = _mats_cols
+    _mdf['PROGRAMA'] = _mdf['PROGRAMA'].apply(fix).str.strip()
+    _mdf = _mdf[~_mdf['PROGRAMA'].isin(['nan','','Total','NaN'])]
+    _may_mat_col = next((c for c in _mats_cols if 'may 2026' in c.lower()), None)
+    if _may_mat_col:
+        _mdf[_may_mat_col] = pd.to_numeric(_mdf[_may_mat_col], errors='coerce').fillna(0)
+        for _, row in _mdf.iterrows():
+            nk = norm_prog(row['PROGRAMA'])
+            _real_may_mats[nk] = int(row[_may_mat_col])
+    print(f'Real May mats (separate file): {len(_real_may_mats)} programs, total={sum(_real_may_mats.values())}')
 
 _CONNECTORS = {'Y','E','O','EN','DE','A','CON','E','I','AL'}
 
@@ -96,7 +132,7 @@ def _get_pricing(nk):
                 return pv
     return ''
 
-MAY_DAYS_DONE  = 28   # auto-detectado del nombre del archivo
+MAY_DAYS_DONE  = 31   # auto-detectado del nombre del archivo
 MAY_DAYS_TOTAL = 31
 MAY_FACTOR     = MAY_DAYS_TOTAL / MAY_DAYS_DONE
 
@@ -490,7 +526,318 @@ for medio in key_medios:
 
 print(f'MX medios loaded: {len(medio_stats)}')
 
+# ── FUNNEL POR PROGRAMA (nuevo archivo data - 2026-06-01T215409.317.xlsx) ────
+def build_funnel_prog():
+    """Parse the per-program funnel file (Marzo/Abril/Mayo, cols 1-27).
+    Returns list of program dicts sorted by may_leads desc, plus overall MX totals.
+    """
+    try:
+        fp_raw = pd.read_excel(FUNNEL_PROG_FILE, header=None)
+    except Exception as e:
+        print(f'AVISO: no se pudo leer FUNNEL_PROG_FILE: {e}')
+        return {'programs': [], 'totals': {}}
+
+    # Month groups: Marzo cols 1-9, Abril 10-18, Mayo 19-27
+    # Row 1 (index 1): DESCRIPCION PROGRAMA | LEADS | CONTACTO GENERAL | CONTACTO_UTIL_POS | REFERENCIAS | VENTAS | %CONTACTO LEAD | %CONTACTO EFECTO | %REFERENCIAS UTIL | %VENTAS REFERENCIAS
+    MONTH_OFFSETS = [('Marzo', 1), ('Abril', 10), ('Mayo', 19)]
+
+    def _to_f(val):
+        try:
+            v = float(val)
+            return 0.0 if pd.isna(v) else v
+        except:
+            return 0.0
+
+    programs = []
+    month_totals = {m: {'leads': 0, 'contacto': 0, 'util': 0, 'ventas': 0} for m, _ in MONTH_OFFSETS}
+
+    for row_i in range(2, len(fp_raw)):
+        row = fp_raw.iloc[row_i]
+        prog_raw = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
+        if not prog_raw or prog_raw in ('nan', '', 'Total', 'NaN', 'NO IDENTIFICADO'):
+            continue
+
+        prog_name = fix(prog_raw)
+        data_by_month = {}
+
+        for month_name, start_col in MONTH_OFFSETS:
+            leads    = _to_f(row.iloc[start_col])
+            contacto = _to_f(row.iloc[start_col + 1])
+            util     = _to_f(row.iloc[start_col + 2])
+            refs     = _to_f(row.iloc[start_col + 3])
+            ventas   = _to_f(row.iloc[start_col + 4])
+
+            pct_cont = round(contacto / leads * 100, 1) if leads > 0 else 0.0
+            pct_ef   = round(util / contacto * 100, 1) if contacto > 0 else 0.0
+            cr       = round(ventas / leads * 100, 2) if leads > 0 else 0.0
+
+            data_by_month[month_name] = {
+                'leads': int(leads), 'contacto': int(contacto),
+                'util': int(util), 'refs': int(refs), 'ventas': int(ventas),
+                'pct_cont': pct_cont, 'pct_ef': pct_ef, 'cr': cr
+            }
+
+            # Accumulate totals (only rows with actual leads)
+            if leads > 0:
+                month_totals[month_name]['leads']    += int(leads)
+                month_totals[month_name]['contacto'] += int(contacto)
+                month_totals[month_name]['util']     += int(util)
+                month_totals[month_name]['ventas']   += int(ventas)
+
+        mar = data_by_month['Marzo']
+        may = data_by_month['Mayo']
+
+        may_leads    = may['leads']
+        may_pct_cont = may['pct_cont']
+        may_pct_ef   = may['pct_ef']
+        may_cr       = may['cr']
+
+        # Trends: Mayo - Marzo
+        trend_pct_cont = round(may_pct_cont - mar['pct_cont'], 1)
+        trend_pct_ef   = round(may_pct_ef   - mar['pct_ef'],   1)
+        trend_cr       = round(may_cr        - mar['cr'],       2)
+
+        # Bottleneck classification based on May data
+        if may_pct_cont < 50:
+            bottleneck = 'contacto'
+        elif may_pct_ef < 20:
+            bottleneck = 'efectividad'
+        elif may_cr < 1.2:
+            bottleneck = 'cierre'
+        else:
+            bottleneck = 'escalar'
+
+        programs.append({
+            'prog':         prog_name,
+            'may_leads':    may_leads,
+            'mar':          mar,
+            'abr':          data_by_month['Abril'],
+            'may':          may,
+            'trend_pct_cont': trend_pct_cont,
+            'trend_pct_ef':   trend_pct_ef,
+            'trend_cr':       trend_cr,
+            'bottleneck':   bottleneck,
+        })
+
+    programs.sort(key=lambda x: -x['may_leads'])
+
+    # Compute overall totals with derived metrics
+    totals = {}
+    for month_name, t in month_totals.items():
+        l = t['leads']; c = t['contacto']; u = t['util']; v = t['ventas']
+        totals[month_name] = {
+            'leads':    l, 'contacto': c, 'util': u, 'ventas': v,
+            'pct_cont': round(c / l * 100, 1) if l > 0 else 0.0,
+            'pct_ef':   round(u / c * 100, 1) if c > 0 else 0.0,
+            'cr':       round(v / l * 100, 2) if l > 0 else 0.0,
+        }
+
+    print(f'funnel_prog: {len(programs)} programas cargados')
+    return {'programs': programs, 'totals': totals}
+
+# ── FUNNEL POR PROGRAMA × MEDIO (nuevo archivo data - 2026-06-01T221257.291.xlsx) ─
+def build_funnel_prog_medio():
+    """Parse the per-program × medio funnel file.
+    Cols: 0=DESCRIPCIÓN PROGRAMA, 1=MEDIO, 2-10=Enero, 11-19=Feb, 20-28=Marzo, 29-37=Abril, 38-46=Mayo
+    Each month block: LEADS, CONTACTO GENERAL, CONTACTO_UTIL_POS, REFERENCIAS, VENTAS,
+                      %CONTACO LEAD, %CONTACO EFECTO, %REFERENCIAS UTIL, %VENTAS REFERENCIAS
+    """
+    try:
+        fp_raw = pd.read_excel(FUNNEL_PROG_MEDIO_FILE, header=None)
+    except Exception as e:
+        print(f'AVISO: no se pudo leer FUNNEL_PROG_MEDIO_FILE: {e}')
+        return []
+
+    def _to_f(val):
+        try:
+            v = float(val)
+            return 0.0 if pd.isna(v) else v
+        except:
+            return 0.0
+
+    # Column offsets for each month block (0-indexed from col 0)
+    # Enero=2-10, Feb=11-19, Marzo=20-28, Abril=29-37, Mayo=38-46
+    MAR_START = 20
+    MAY_START = 38
+
+    results = []
+
+    for row_i in range(2, len(fp_raw)):
+        row = fp_raw.iloc[row_i]
+
+        prog_raw = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
+        medio_raw = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ''
+
+        # Skip rows where MEDIO='Total' (subtotals), or prog is bad, or medio is bad
+        if not prog_raw or prog_raw in ('nan', '', 'NaN', 'Total', 'NO IDENTIFICADO'):
+            continue
+        if medio_raw in ('nan', '', 'NaN', 'Total'):
+            continue
+
+        prog_name = fix(prog_raw)
+        medio_name = fix(medio_raw)
+
+        def _extract_month(start):
+            leads    = _to_f(row.iloc[start + 0])
+            contacto = _to_f(row.iloc[start + 1])
+            util     = _to_f(row.iloc[start + 2])
+            refs     = _to_f(row.iloc[start + 3])
+            ventas   = _to_f(row.iloc[start + 4])
+            pct_cont = round(contacto / leads * 100, 1) if leads > 0 else 0.0
+            pct_ef   = round(util / contacto * 100, 1) if contacto > 0 else 0.0
+            cr       = round(ventas / leads * 100, 2) if leads > 0 else 0.0
+            return {
+                'leads': int(leads), 'contacto': int(contacto),
+                'util': int(util), 'refs': int(refs), 'ventas': int(ventas),
+                'pct_cont': pct_cont, 'pct_ef': pct_ef, 'cr': cr
+            }
+
+        mar = _extract_month(MAR_START)
+        may = _extract_month(MAY_START)
+
+        may_leads = may['leads']
+        if may_leads < 50:
+            continue
+
+        pct_cont = may['pct_cont']
+        pct_ef   = may['pct_ef']
+        cr       = may['cr']
+
+        delta_cont = round(pct_cont - mar['pct_cont'], 1)
+        delta_ef   = round(pct_ef   - mar['pct_ef'],   1)
+        delta_cr   = round(cr       - mar['cr'],        2)
+
+        # Bottleneck classification (May data)
+        if pct_cont < 50:
+            bottleneck = 'contacto'
+        elif pct_ef < 20:
+            bottleneck = 'efectividad'
+        elif cr < 1.2:
+            bottleneck = 'cierre'
+        else:
+            bottleneck = 'bueno'
+
+        results.append({
+            'prog':        prog_name,
+            'medio':       medio_name,
+            'may_leads':   may_leads,
+            'may_cont':    may['contacto'],
+            'may_util':    may['util'],
+            'may_ventas':  may['ventas'],
+            'pct_cont':    pct_cont,
+            'pct_ef':      pct_ef,
+            'cr':          cr,
+            'mar_pct_cont': mar['pct_cont'],
+            'mar_pct_ef':   mar['pct_ef'],
+            'mar_cr':       mar['cr'],
+            'delta_cont':  delta_cont,
+            'delta_ef':    delta_ef,
+            'delta_cr':    delta_cr,
+            'bottleneck':  bottleneck,
+        })
+
+    results.sort(key=lambda x: -x['may_leads'])
+    print(f'funnel_prog_medio: {len(results)} combinaciones prog×medio cargadas')
+    return results
+
+
 # ── SAVE ─────────────────────────────────────────────────────────────────────
+# ── INVERSIÓN x CANAL (RESUMEN file, May 2026) ───────────────────────────────
+def build_inv_canal():
+    try:
+        resumen_raw = pd.read_excel(RESUMEN_FILE, sheet_name='Export', header=None)
+    except Exception as e:
+        print(f'AVISO: no se pudo leer RESUMEN_FILE: {e}')
+        return []
+
+    # Identify May 2026 columns: row0='may 2026', row1=LEADS/VENTAS/INVERSION
+    r0 = [str(x).lower().strip() for x in resumen_raw.iloc[0].tolist()]
+    r1 = [str(x).upper().strip() for x in resumen_raw.iloc[1].tolist()]
+    may_leads_idx = may_ventas_idx = may_inv_idx = None
+    for i, (m, met) in enumerate(zip(r0, r1)):
+        if m == 'may 2026':
+            if met == 'LEADS'   and may_leads_idx  is None: may_leads_idx  = i
+            if met == 'VENTAS'  and may_ventas_idx is None: may_ventas_idx = i
+            if met == 'INVERSION' and may_inv_idx  is None: may_inv_idx    = i
+
+    if None in (may_leads_idx, may_ventas_idx, may_inv_idx):
+        print('AVISO: no se encontraron columnas May 2026 en RESUMEN')
+        return []
+
+    # Leaf rows: CANAL not nan/Total AND NIVEL not nan/Total
+    data_r = resumen_raw.iloc[2:].copy()
+    data_r.columns = list(range(resumen_raw.shape[1]))
+    mask = (
+        data_r[3].notna() & ~data_r[3].astype(str).isin(['nan','Total','']) &
+        data_r[1].notna() & ~data_r[1].astype(str).isin(['nan','Total',''])
+    )
+    leaf = data_r[mask].copy()
+    for col in [may_leads_idx, may_ventas_idx, may_inv_idx]:
+        leaf[col] = pd.to_numeric(leaf[col], errors='coerce').fillna(0)
+
+    grouped = leaf.groupby(3)[[may_leads_idx, may_ventas_idx, may_inv_idx]].sum().reset_index()
+    grouped.columns = ['canal', 'leads', 'ventas', 'inversion']
+
+    # Fix encoding for canal names
+    grouped['canal'] = grouped['canal'].apply(fix)
+
+    # Filter: at least some leads or ventas
+    grouped = grouped[(grouped['leads'] > 0) | (grouped['ventas'] > 0)].copy()
+
+    # Build programs per canal from NEW_FILE (MX, May 2026)
+    may_l_col = leads_cols[4]   # May 2026 LEADS column
+    may_m_col = mats_cols[4]    # May 2026 MATR column
+    mx_progs  = data_progs[data_progs['PAIS'] == MX_PAIS].copy() if MX_PAIS in data_progs['PAIS'].values else data_progs.copy()
+    for col in [may_l_col, may_m_col]:
+        if col:
+            mx_progs[col] = pd.to_numeric(mx_progs[col], errors='coerce').fillna(0)
+
+    def get_progs_for_canal(canal_name):
+        sub = mx_progs[mx_progs['CANAL'] == canal_name].copy()
+        if sub.empty:
+            return []
+        if may_l_col:
+            sub['_ml'] = sub[may_l_col]
+        else:
+            sub['_ml'] = 0
+        if may_m_col:
+            sub['_mm'] = sub[may_m_col]
+        else:
+            sub['_mm'] = 0
+        grp = sub.groupby('PROGRAMA')[['_ml','_mm']].sum().reset_index()
+        grp = grp[grp['_ml'] > 0].sort_values('_ml', ascending=False).head(50)
+        rows = []
+        for _, r in grp.iterrows():
+            l = int(r['_ml']); m = int(r['_mm'])
+            cr = round(m/l*100, 2) if l > 0 else 0
+            rows.append({'prog': fix(str(r['PROGRAMA'])), 'leads': l, 'ventas': m, 'cr': cr})
+        return rows
+
+    result = []
+    for _, row in grouped.iterrows():
+        canal = row['canal']
+        leads    = int(row['leads'])
+        ventas   = int(row['ventas'])
+        inversion = int(row['inversion'])
+        cpl = round(inversion / leads,    1) if leads > 0 and inversion > 0 else None
+        cpa = round(inversion / ventas,   1) if ventas > 0 and inversion > 0 else None
+        cr  = round(ventas    / leads * 100, 2) if leads > 0 else 0
+        progs = get_progs_for_canal(canal)
+        result.append({
+            'canal': canal, 'leads': leads, 'ventas': ventas, 'inversion': inversion,
+            'cpl': cpl, 'cpa': cpa, 'cr': cr,
+            'progs': progs
+        })
+
+    # Sort: paid (inversion>0) desc by inversion, then organic desc by leads
+    paid    = sorted([r for r in result if r['inversion'] > 0], key=lambda x: -x['inversion'])
+    organic = sorted([r for r in result if r['inversion'] == 0], key=lambda x: -x['leads'])
+    combined = paid + organic
+    print(f'inv_canal: {len(paid)} canales pago, {len(organic)} orgánicos')
+    return combined
+
+inv_canal = build_inv_canal()
+
 payload = {
     'months':       MONTHS_LABELS,
     'prog_mx':      prog_mx[:60],
@@ -507,7 +854,10 @@ payload = {
     'trend_int_2025': trend_int_2025,
     'trend_all_2025': trend_all_2025,
     'may_factor':   round(MAY_FACTOR,2),
-    'may_days':     MAY_DAYS_DONE
+    'may_days':     MAY_DAYS_DONE,
+    'inv_canal':    inv_canal,
+    'funnel_prog':       build_funnel_prog(),
+    'funnel_prog_medio': build_funnel_prog_medio(),
 }
 with open(r'C:\Users\USUARIO\AppData\Local\Temp\dashboard_data.json','w',encoding='utf-8') as f:
     json.dump(payload, f, ensure_ascii=False, indent=2)

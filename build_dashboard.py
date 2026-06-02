@@ -20,6 +20,10 @@ CANAL_TREND_MX  = D.get('canal_trend_mx', {})
 MAY_F           = D['may_factor']
 MAY_D           = D['may_days']
 INV_CANAL       = D.get('inv_canal', [])
+_FP             = D.get('funnel_prog', {'programs': [], 'totals': {}})
+FUNNEL_PROG     = _FP.get('programs', [])
+FUNNEL_TOTALS   = _FP.get('totals', {})
+FUNNEL_PROG_MEDIO = D.get('funnel_prog_medio', [])
 
 # Global set of NEW program names (used for badges across all views)
 NEW_PROGS = {p['prog'] for p in PROG_MX if p.get('is_new')}
@@ -1554,6 +1558,523 @@ def build_inv_canal_html(inv_canal):
 
 inv_canal_html = build_inv_canal_html(INV_CANAL)
 
+# ── Diagnóstico tab ────────────────────────────────────────────────────────────
+def build_diagnostico_html():
+    if not FUNNEL_PROG:
+        return ('<div class="alert aw"><span>!</span><div>Sin datos de diagnóstico. '
+                'Asegurate de que el archivo <b>data - FECHA.xlsx</b> con columna CONTACTO esté en Downloads.</div></div>')
+
+    totals = FUNNEL_TOTALS
+    mar_t = totals.get('Marzo', {})
+    may_t = totals.get('Mayo',  {})
+
+    mar_pc  = mar_t.get('pct_cont', 0)
+    mar_ef  = mar_t.get('pct_ef',   0)
+    mar_cr  = mar_t.get('cr',       0)
+    may_pc  = may_t.get('pct_cont', 0)
+    may_ef  = may_t.get('pct_ef',   0)
+    may_cr  = may_t.get('cr',       0)
+
+    d_pc = round(may_pc - mar_pc, 1)
+    d_ef = round(may_ef - mar_ef, 1)
+    d_cr = round(may_cr - mar_cr, 2)
+
+    def delta_html(d, unit='pp'):
+        arrow = '▲' if d >= 0 else '▼'
+        col   = '#16a34a' if d >= 0 else '#dc2626'
+        sign  = '+' if d >= 0 else ''
+        return f'<span style="color:{col};font-size:22px;font-weight:900;">{arrow} {sign}{d}{unit}</span>'
+
+    def metric_card(title, mar_val, may_val, delta, unit='%', delta_unit='pp'):
+        d = round(may_val - mar_val, 1 if delta_unit == 'pp' else 2)
+        col = '#16a34a' if d >= 0 else '#dc2626'
+        bg  = '#f0fdf4' if d >= 0 else '#fef2f2'
+        bdr = '#16a34a' if d >= 0 else '#dc2626'
+        sign = '+' if d >= 0 else ''
+        return (
+            f'<div style="background:{bg};border-radius:12px;border:2px solid {bdr};padding:16px 18px;text-align:center;">'
+            f'<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">{title}</div>'
+            f'<div style="display:flex;align-items:center;justify-content:center;gap:14px;">'
+            f'<div><div style="font-size:9px;color:#94a3b8;margin-bottom:2px;">Marzo</div>'
+            f'<div style="font-size:20px;font-weight:800;color:#475569;">{mar_val}{unit}</div></div>'
+            f'<div style="font-size:18px;color:#cbd5e1;">→</div>'
+            f'<div><div style="font-size:9px;color:#94a3b8;margin-bottom:2px;">Mayo</div>'
+            f'<div style="font-size:20px;font-weight:800;color:{col};">{may_val}{unit}</div></div>'
+            f'</div>'
+            f'<div style="margin-top:10px;font-size:24px;font-weight:900;color:{col};">'
+            f'{"▲" if d >= 0 else "▼"} {sign}{d}{delta_unit}</div>'
+            f'</div>'
+        )
+
+    # Alert banners for drops > 3pp
+    alerts_html = ''
+    if d_pc < -3:
+        alerts_html += (f'<div class="alert ae" style="font-size:12px;font-weight:700;">'
+                        f'<span>⚠</span><div>CAIDA DETECTADA: %Contacto bajó {abs(d_pc):.1f}pp desde marzo '
+                        f'({mar_pc:.1f}% → {may_pc:.1f}%). El equipo está llegando a menos leads.</div></div>')
+    if d_ef < -3:
+        alerts_html += (f'<div class="alert ae" style="font-size:12px;font-weight:700;">'
+                        f'<span>⚠</span><div>CAIDA DETECTADA: %Efectividad bajó {abs(d_ef):.1f}pp desde marzo '
+                        f'({mar_ef:.1f}% → {may_ef:.1f}%). Se llama más pero se convence menos.</div></div>')
+    if d_cr < -0.3:
+        alerts_html += (f'<div class="alert ae" style="font-size:12px;font-weight:700;">'
+                        f'<span>⚠</span><div>CAIDA DETECTADA: CR bajó {abs(d_cr):.2f}pp desde marzo '
+                        f'({mar_cr:.2f}% → {may_cr:.2f}%). El cierre está fallando.</div></div>')
+    if not alerts_html and d_pc >= 0 and d_ef >= 0 and d_cr >= 0:
+        alerts_html = ('<div class="alert ag"><span>✓</span><div>'
+                       'Las tres métricas del funnel mejoraron o se mantienen estables desde marzo. No hay caídas detectadas.</div></div>')
+
+    # Section 1: ¿Qué cambió?
+    s1 = (
+        f'<div class="sec-hdr">¿Qué cambió? — Marzo vs Mayo <span>Totales MX · todas las carreras</span></div>'
+        f'{alerts_html}'
+        f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px;">'
+        f'{metric_card("%Contacto", mar_pc, may_pc, d_pc)}'
+        f'{metric_card("%Efectividad", mar_ef, may_ef, d_ef)}'
+        f'{metric_card("CR%", mar_cr, may_cr, d_cr, unit="%", delta_unit="pp")}'
+        f'</div>'
+    )
+
+    # Section 2: 4 buckets
+    bucket_contacto    = [p for p in FUNNEL_PROG if p['bottleneck'] == 'contacto']
+    bucket_efectividad = [p for p in FUNNEL_PROG if p['bottleneck'] == 'efectividad']
+    bucket_cierre      = [p for p in FUNNEL_PROG if p['bottleneck'] == 'cierre']
+    bucket_escalar     = [p for p in FUNNEL_PROG if p['bottleneck'] == 'escalar']
+
+    def bucket_rows_contacto(progs, limit=8):
+        if not progs:
+            return '<div style="color:#94a3b8;font-size:10px;padding:8px;">Sin programas en este cuadrante.</div>'
+        rows = ''
+        for p in progs[:limit]:
+            d = p['trend_pct_cont']
+            d_col = '#16a34a' if d >= 0 else '#dc2626'
+            sign  = '+' if d >= 0 else ''
+            rows += (
+                f'<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;'
+                f'border-bottom:1px solid rgba(0,0,0,.05);font-size:11px;">'
+                f'<div style="flex:1;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
+                f'title="{p["prog"]}">{shorten(p["prog"], 38)}</div>'
+                f'<div style="color:#64748b;white-space:nowrap;">{fmt_k(p["may_leads"])} leads</div>'
+                f'<div style="font-weight:800;color:#dc2626;white-space:nowrap;">{p["may"]["pct_cont"]:.0f}%</div>'
+                f'<div style="color:{d_col};font-weight:700;font-size:10px;white-space:nowrap;">{sign}{d:.1f}pp</div>'
+                f'</div>'
+            )
+        return rows
+
+    def bucket_rows_ef(progs, limit=8):
+        if not progs:
+            return '<div style="color:#94a3b8;font-size:10px;padding:8px;">Sin programas en este cuadrante.</div>'
+        rows = ''
+        for p in progs[:limit]:
+            d = p['trend_pct_ef']
+            d_col = '#16a34a' if d >= 0 else '#dc2626'
+            sign  = '+' if d >= 0 else ''
+            rows += (
+                f'<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;'
+                f'border-bottom:1px solid rgba(0,0,0,.05);font-size:11px;">'
+                f'<div style="flex:1;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
+                f'title="{p["prog"]}">{shorten(p["prog"], 38)}</div>'
+                f'<div style="color:#64748b;white-space:nowrap;">{fmt_k(p["may_leads"])} leads</div>'
+                f'<div style="font-weight:800;color:#ea580c;white-space:nowrap;">{p["may"]["pct_ef"]:.0f}%</div>'
+                f'<div style="color:{d_col};font-weight:700;font-size:10px;white-space:nowrap;">{sign}{d:.1f}pp</div>'
+                f'</div>'
+            )
+        return rows
+
+    def bucket_rows_cr(progs, key_color, limit=8):
+        if not progs:
+            return '<div style="color:#94a3b8;font-size:10px;padding:8px;">Sin programas en este cuadrante.</div>'
+        rows = ''
+        for p in progs[:limit]:
+            d = p['trend_cr']
+            d_col = '#16a34a' if d >= 0 else '#dc2626'
+            sign  = '+' if d >= 0 else ''
+            rows += (
+                f'<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;'
+                f'border-bottom:1px solid rgba(0,0,0,.05);font-size:11px;">'
+                f'<div style="flex:1;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
+                f'title="{p["prog"]}">{shorten(p["prog"], 38)}</div>'
+                f'<div style="color:#64748b;white-space:nowrap;">{fmt_k(p["may_leads"])} leads</div>'
+                f'<div style="font-weight:800;color:{key_color};white-space:nowrap;">{p["may"]["cr"]:.2f}%</div>'
+                f'<div style="color:{d_col};font-weight:700;font-size:10px;white-space:nowrap;">{sign}{d:.2f}pp</div>'
+                f'</div>'
+            )
+        return rows
+
+    col_hdr = (
+        '<div style="display:flex;gap:8px;padding:4px 10px;background:rgba(0,0,0,.06);'
+        'font-size:9px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;">'
+        '<div style="flex:1;">Programa</div>'
+        '<div style="white-space:nowrap;">Leads May</div>'
+        '<div style="white-space:nowrap;min-width:40px;text-align:right;">Métrica</div>'
+        '<div style="white-space:nowrap;min-width:48px;text-align:right;">Δ vs Mar</div>'
+        '</div>'
+    )
+
+    def bucket_card(icon, title, subtitle, desc, color, bg_card, progs_html, n_progs):
+        return (
+            f'<div style="background:white;border-radius:12px;border:2px solid {color};overflow:hidden;">'
+            f'<div style="background:{color};padding:10px 14px;">'
+            f'<div style="color:white;font-size:13px;font-weight:800;">{icon} {title} <span style="font-size:10px;font-weight:400;opacity:.85;">({n_progs} programas)</span></div>'
+            f'<div style="color:rgba(255,255,255,.85);font-size:10px;margin-top:2px;">{subtitle}</div>'
+            f'</div>'
+            f'{col_hdr}'
+            f'<div style="background:{bg_card};">{progs_html}</div>'
+            f'<div style="padding:6px 10px;background:{bg_card};border-top:1px solid {color}22;">'
+            f'<span style="font-size:10px;color:#64748b;">{desc}</span></div>'
+            f'</div>'
+        )
+
+    b1 = bucket_card('🔴', 'CONTACTO BAJO', '%Contacto &lt; 50% en Mayo',
+                     'El equipo no llega a estos leads. Revisar asignación y CRM.',
+                     '#dc2626', '#fff8f8',
+                     bucket_rows_contacto(bucket_contacto), len(bucket_contacto))
+
+    b2 = bucket_card('🟠', 'EFECTIVIDAD BAJA', '%Cont ≥ 50% pero %Ef &lt; 20%',
+                     'Se llama pero no convence. Revisar pitch y calidad del lead.',
+                     '#ea580c', '#fff7ed',
+                     bucket_rows_ef(bucket_efectividad), len(bucket_efectividad))
+
+    b3 = bucket_card('🟡', 'CIERRE BAJO', '%Cont ≥ 50%, %Ef ≥ 20% pero CR &lt; 1.2%',
+                     'Lead interesado pero no cierra. Revisar seguimiento y propuesta.',
+                     '#d97706', '#fffbeb',
+                     bucket_rows_cr(bucket_cierre, '#d97706'), len(bucket_cierre))
+
+    b4 = bucket_card('🟢', 'ESCALAR', '%Cont ≥ 50%, %Ef ≥ 20%, CR ≥ 1.2%',
+                     'Funnel sano — necesitan más leads para crecer.',
+                     '#16a34a', '#f0fdf4',
+                     bucket_rows_cr(bucket_escalar, '#16a34a'), len(bucket_escalar))
+
+    s2 = (
+        f'<div class="sec-hdr">¿Dónde rompe el funnel? — Diagnóstico por programa <span>Mayo 2026 · ordenado por leads desc</span></div>'
+        f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;">'
+        f'{b1}{b2}{b3}{b4}'
+        f'</div>'
+    )
+
+    # Section 3: Most deteriorated programs
+    deteriorated = [
+        p for p in FUNNEL_PROG
+        if p['trend_pct_cont'] < -5 or p['trend_pct_ef'] < -5 or p['trend_cr'] < -0.5
+    ]
+    # Sort by worst combined drop (sum of negative deltas, normalized)
+    def drop_magnitude(p):
+        pc_drop = min(0, p['trend_pct_cont']) / 5   # normalize to same scale roughly
+        ef_drop = min(0, p['trend_pct_ef'])  / 5
+        cr_drop = min(0, p['trend_cr'])      / 0.5
+        return pc_drop + ef_drop + cr_drop
+
+    deteriorated.sort(key=drop_magnitude)
+    deteriorated = deteriorated[:10]
+
+    def delta_cell(val, threshold):
+        col = '#dc2626' if val < -threshold else ('#16a34a' if val > 0 else '#64748b')
+        sign = '+' if val > 0 else ''
+        return f'<td style="padding:6px 10px;text-align:right;font-weight:700;font-size:11px;color:{col};">{sign}{val}</td>'
+
+    det_rows = ''
+    for p in deteriorated:
+        mar = p['mar']; may = p['may']
+        pc_mar = mar['pct_cont']; pc_may = may['pct_cont']
+        ef_mar = mar['pct_ef'];   ef_may = may['pct_ef']
+        cr_mar = mar['cr'];       cr_may = may['cr']
+
+        pc_delta = round(pc_may - pc_mar, 1)
+        ef_delta = round(ef_may - ef_mar, 1)
+        cr_delta = round(cr_may - cr_mar, 2)
+
+        det_rows += (
+            f'<tr style="border-bottom:1px solid #f1f5f9;">'
+            f'<td style="padding:6px 10px;font-size:11px;font-weight:600;color:#1e293b;'
+            f'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
+            f'title="{p["prog"]}">{shorten(p["prog"], 36)}</td>'
+            f'<td style="padding:6px 10px;text-align:right;font-size:11px;color:#64748b;">{fmt_k(p["may_leads"])}</td>'
+            f'<td style="padding:6px 10px;text-align:center;font-size:10px;color:#475569;">{pc_mar:.0f}% → {pc_may:.0f}%</td>'
+            f'{delta_cell(pc_delta, 5)}'
+            f'<td style="padding:6px 10px;text-align:center;font-size:10px;color:#475569;">{ef_mar:.0f}% → {ef_may:.0f}%</td>'
+            f'{delta_cell(ef_delta, 5)}'
+            f'<td style="padding:6px 10px;text-align:center;font-size:10px;color:#475569;">{cr_mar:.2f}% → {cr_may:.2f}%</td>'
+            f'{delta_cell(cr_delta, 0.5)}'
+            f'</tr>'
+        )
+
+    if det_rows:
+        det_table = (
+            f'<div style="background:white;border-radius:12px;border:1px solid #fca5a5;overflow:hidden;'
+            f'box-shadow:0 1px 4px rgba(0,0,0,.06);">'
+            f'<div style="background:#dc2626;padding:10px 16px;">'
+            f'<span style="color:white;font-size:13px;font-weight:800;">⚠ Estos programas empeoraron significativamente desde marzo</span>'
+            f'<span style="color:rgba(255,255,255,.8);font-size:10px;margin-left:12px;">Top 10 por magnitud de caída · Δ = Mayo − Marzo</span>'
+            f'</div>'
+            f'<table style="width:100%;border-collapse:collapse;">'
+            f'<thead><tr style="background:#f8fafc;">'
+            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-transform:uppercase;text-align:left;">Programa</th>'
+            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:right;">Leads May</th>'
+            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:center;">%Cont Mar→May</th>'
+            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:right;">Δ</th>'
+            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:center;">%Ef Mar→May</th>'
+            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:right;">Δ</th>'
+            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:center;">CR Mar→May</th>'
+            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:right;">Δ</th>'
+            f'</tr></thead>'
+            f'<tbody>{det_rows}</tbody>'
+            f'</table></div>'
+        )
+    else:
+        det_table = ('<div class="alert ag"><span>✓</span><div>Ningún programa muestra deterioro significativo '
+                     '(caída &gt;5pp en contacto/efectividad o &gt;0.5pp en CR) desde marzo.</div></div>')
+
+    s3 = (
+        f'<div class="sec-hdr" style="margin-top:4px;">Más deteriorados <span>Programas con caída significativa desde marzo</span></div>'
+        f'{det_table}'
+    )
+
+    return s1 + s2 + s3
+
+# ── Diagnóstico por Programa × Medio ──────────────────────────────────────────
+def build_diag_medio_html():
+    if not FUNNEL_PROG_MEDIO:
+        return ('<div class="alert aw"><span>!</span><div>Sin datos de diagnóstico por medio. '
+                'Asegurate de que el archivo con columnas DESCRIPCIÓN PROGRAMA y MEDIO esté en Downloads.</div></div>')
+
+    PAID_MEDIOS = {'Google Search', 'Facebook - Regular', 'Google pmax', 'Tiktok',
+                   'Cleverclick', 'Bing', 'Lqqa', 'Edukapp', 'Educaedu', 'Atom',
+                   'Infobip', 'Click To Whatsapp Bot', 'Facebook'}
+
+    def medio_chip(medio):
+        is_paid = any(pm.lower() in medio.lower() for pm in PAID_MEDIOS)
+        if is_paid:
+            bg, col = '#fff3e0', '#e65100'
+        else:
+            bg, col = '#f5f5f5', '#546e7a'
+        return (f'<span style="background:{bg};color:{col};padding:2px 7px;border-radius:10px;'
+                f'font-size:9px;font-weight:700;white-space:nowrap;">{medio}</span>')
+
+    def pct_cont_cell(v):
+        if v < 50:   col = '#dc2626'
+        elif v < 57: col = '#d97706'
+        else:        col = '#16a34a'
+        return f'<td style="padding:4px 8px;text-align:right;font-weight:800;font-size:10px;color:{col};">{v:.0f}%</td>'
+
+    def pct_ef_cell(v):
+        if v < 20:   col = '#dc2626'
+        elif v < 27: col = '#d97706'
+        else:        col = '#16a34a'
+        return f'<td style="padding:4px 8px;text-align:right;font-weight:800;font-size:10px;color:{col};">{v:.0f}%</td>'
+
+    def cr_cell(v):
+        if v < 1.0:   col = '#dc2626'
+        elif v < 1.5: col = '#d97706'
+        else:         col = '#16a34a'
+        return f'<td style="padding:4px 8px;text-align:right;font-weight:800;font-size:10px;color:{col};">{v:.2f}%</td>'
+
+    def delta_cell_med(v, unit='pp'):
+        col = '#16a34a' if v >= 0 else '#dc2626'
+        sign = '+' if v >= 0 else ''
+        return f'<td style="padding:4px 8px;text-align:right;font-weight:700;font-size:10px;color:{col};">{sign}{v}{unit}</td>'
+
+    def bottleneck_badge(b):
+        MAP = {
+            'contacto':     ('🔴', '#dc2626', '#fff8f8', 'Contacto'),
+            'efectividad':  ('🟠', '#ea580c', '#fff7ed', 'Efectividad'),
+            'cierre':       ('🟡', '#d97706', '#fffbeb', 'Cierre'),
+            'bueno':        ('🟢', '#16a34a', '#f0fdf4', 'Bueno'),
+        }
+        icon, col, bg, lbl = MAP.get(b, ('⚪', '#64748b', '#f8fafc', b))
+        return (f'<td style="padding:4px 8px;text-align:center;">'
+                f'<span style="background:{bg};color:{col};padding:2px 7px;border-radius:10px;'
+                f'font-size:9px;font-weight:800;white-space:nowrap;">{icon} {lbl}</span></td>')
+
+    col_hdr_html = (
+        '<thead><tr style="background:#f8fafc;">'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:left;text-transform:uppercase;">Programa</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:left;text-transform:uppercase;">Medio</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">Leads</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">%Cont</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">%Ef</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">CR%</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:center;text-transform:uppercase;">Problema</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">Δ Cont</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">Δ Ef</th>'
+        '</tr></thead>'
+    )
+
+    def prog_short(s):
+        s = str(s)
+        for pfx in ['LICENCIATURA EN ', 'LICENCIATURA ', 'MAESTRÍA EN ', 'MAESTRIA EN ',
+                    'BACHELOR OF SCIENCE IN ', 'BACHELOR OF BUSINESS ADMINISTRATION IN ',
+                    'MASTER OF ', 'MASTER IN ', 'DOCTORADO EN ']:
+            if s.upper().startswith(pfx):
+                s = s[len(pfx):]
+                break
+        return s[:35] + ('…' if len(s) > 35 else '')
+
+    def build_row(r, i):
+        bg = '#ffffff' if i % 2 == 0 else '#f8fafc'
+        prog_td = (f'<td style="padding:4px 8px;font-size:10px;font-weight:600;color:#1e293b;'
+                   f'white-space:nowrap;background:{bg};" title="{r["prog"]}">{prog_short(r["prog"])}</td>')
+        medio_td = f'<td style="padding:4px 8px;background:{bg};">{medio_chip(r["medio"])}</td>'
+        leads_td = f'<td style="padding:4px 8px;text-align:right;font-size:10px;color:#475569;background:{bg};">{fmt_k(r["may_leads"])}</td>'
+        return (f'<tr style="border-bottom:1px solid #f1f5f9;background:{bg};">'
+                f'{prog_td}{medio_td}{leads_td}'
+                f'{pct_cont_cell(r["pct_cont"])}'
+                f'{pct_ef_cell(r["pct_ef"])}'
+                f'{cr_cell(r["cr"])}'
+                f'{bottleneck_badge(r["bottleneck"])}'
+                f'{delta_cell_med(r["delta_cont"])}'
+                f'{delta_cell_med(r["delta_ef"])}'
+                f'</tr>')
+
+    # ── Table A: Top combinaciones a intervenir ──────────────────────────────
+    table_a_data = [
+        r for r in FUNNEL_PROG_MEDIO
+        if r['may_leads'] >= 200 and (r['pct_cont'] < 50 or r['pct_ef'] < 20)
+    ]
+    # Already sorted by may_leads desc from extract_data
+    table_a_data = table_a_data[:15]
+
+    rows_a = ''.join(build_row(r, i) for i, r in enumerate(table_a_data))
+    if not rows_a:
+        rows_a = '<tr><td colspan="9" style="padding:14px;color:#94a3b8;text-align:center;">Sin combinaciones críticas con ≥200 leads en mayo.</td></tr>'
+
+    table_a = (
+        f'<div style="background:white;border-radius:12px;border:1px solid #fca5a5;overflow:hidden;'
+        f'box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:20px;">'
+        f'<div style="background:#dc2626;padding:10px 16px;display:flex;align-items:center;gap:12px;">'
+        f'<span style="color:white;font-size:13px;font-weight:800;">🎯 Top combinaciones a intervenir</span>'
+        f'<span style="color:rgba(255,255,255,.8);font-size:10px;">≥200 leads + %Contacto &lt;50% o %Efectividad &lt;20% · {len(table_a_data)} combinaciones</span>'
+        f'</div>'
+        f'<div style="overflow-x:auto;">'
+        f'<table style="width:100%;border-collapse:collapse;font-family:inherit;">'
+        f'{col_hdr_html}<tbody>{rows_a}</tbody>'
+        f'</table></div></div>'
+    )
+
+    # ── Table B: Top deterioros vs Marzo ────────────────────────────────────
+    table_b_data = [
+        r for r in FUNNEL_PROG_MEDIO
+        if r['may_leads'] >= 100 and (r['delta_cont'] < -5 or r['delta_ef'] < -5 or r['delta_cr'] < -0.5)
+    ]
+    # Sort by composite deterioration score
+    table_b_data.sort(key=lambda r: -(abs(r['delta_cont']) + abs(r['delta_ef']) * 2 + abs(r['delta_cr']) * 10))
+    table_b_data = table_b_data[:15]
+
+    # Build col header with emphasized delta columns for Table B
+    col_hdr_b = (
+        '<thead><tr style="background:#1e293b;">'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:left;text-transform:uppercase;">Programa</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:left;text-transform:uppercase;">Medio</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">Leads</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">%Cont</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">%Ef</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:right;text-transform:uppercase;">CR%</th>'
+        '<th style="padding:5px 8px;font-size:8px;font-weight:700;color:#94a3b8;text-align:center;text-transform:uppercase;">Problema</th>'
+        '<th style="padding:5px 8px;font-size:9px;font-weight:800;color:#fbbf24;text-align:right;text-transform:uppercase;">Δ Cont ⚠</th>'
+        '<th style="padding:5px 8px;font-size:9px;font-weight:800;color:#fbbf24;text-align:right;text-transform:uppercase;">Δ Ef ⚠</th>'
+        '</tr></thead>'
+    )
+
+    def build_row_b(r, i):
+        bg = '#ffffff' if i % 2 == 0 else '#fafafa'
+        prog_td = (f'<td style="padding:4px 8px;font-size:10px;font-weight:600;color:#1e293b;'
+                   f'white-space:nowrap;background:{bg};" title="{r["prog"]}">{prog_short(r["prog"])}</td>')
+        medio_td = f'<td style="padding:4px 8px;background:{bg};">{medio_chip(r["medio"])}</td>'
+        leads_td = f'<td style="padding:4px 8px;text-align:right;font-size:10px;color:#475569;background:{bg};">{fmt_k(r["may_leads"])}</td>'
+
+        def delta_prominent(v, unit='pp'):
+            col = '#16a34a' if v >= 0 else '#dc2626'
+            sign = '+' if v >= 0 else ''
+            size = '12px' if abs(v) >= 5 else '10px'
+            return (f'<td style="padding:4px 8px;text-align:right;font-weight:800;font-size:{size};'
+                    f'color:{col};background:{bg};">{sign}{v}{unit}</td>')
+
+        return (f'<tr style="border-bottom:1px solid #f1f5f9;">'
+                f'{prog_td}{medio_td}{leads_td}'
+                f'{pct_cont_cell(r["pct_cont"])}'
+                f'{pct_ef_cell(r["pct_ef"])}'
+                f'{cr_cell(r["cr"])}'
+                f'{bottleneck_badge(r["bottleneck"])}'
+                f'{delta_prominent(r["delta_cont"])}'
+                f'{delta_prominent(r["delta_ef"])}'
+                f'</tr>')
+
+    rows_b = ''.join(build_row_b(r, i) for i, r in enumerate(table_b_data))
+    if not rows_b:
+        rows_b = '<tr><td colspan="9" style="padding:14px;color:#94a3b8;text-align:center;">Sin combinaciones con deterioro significativo desde marzo.</td></tr>'
+
+    table_b = (
+        f'<div style="background:white;border-radius:12px;border:1px solid #fbbf24;overflow:hidden;'
+        f'box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:20px;">'
+        f'<div style="background:#92400e;padding:10px 16px;display:flex;align-items:center;gap:12px;">'
+        f'<span style="color:white;font-size:13px;font-weight:800;">⚠️ Estas combinaciones empeoraron desde Marzo — acá está el problema</span>'
+        f'<span style="color:rgba(255,255,255,.8);font-size:10px;">≥100 leads + Δ Cont &lt;−5pp o Δ Ef &lt;−5pp o Δ CR &lt;−0.5pp · {len(table_b_data)} combinaciones</span>'
+        f'</div>'
+        f'<div style="overflow-x:auto;">'
+        f'<table style="width:100%;border-collapse:collapse;font-family:inherit;">'
+        f'{col_hdr_b}<tbody>{rows_b}</tbody>'
+        f'</table></div></div>'
+    )
+
+    # ── Auto-generated insight ────────────────────────────────────────────────
+    # Main bottleneck
+    bn_counts = {}
+    total_leads_by_bn = {}
+    for r in FUNNEL_PROG_MEDIO:
+        b = r['bottleneck']
+        if b == 'bueno':
+            continue
+        bn_counts[b] = bn_counts.get(b, 0) + 1
+        total_leads_by_bn[b] = total_leads_by_bn.get(b, 0) + r['may_leads']
+
+    # By leads impact, not count
+    if total_leads_by_bn:
+        main_bn = max(total_leads_by_bn, key=lambda k: total_leads_by_bn[k])
+        main_bn_n = bn_counts[main_bn]
+        main_bn_leads = total_leads_by_bn[main_bn]
+        bn_lbl = {'contacto': 'contactación', 'efectividad': 'efectividad', 'cierre': 'cierre'}.get(main_bn, main_bn)
+        insight1 = (f'El principal problema es <b>{bn_lbl}</b>, afectando <b>{main_bn_n}</b> combinaciones '
+                    f'con <b>{fmt_k(main_bn_leads)}</b> leads en mayo.')
+    else:
+        insight1 = 'No se detectaron cuellos de botella críticos en el funnel.'
+
+    # Top medios with critical combos
+    medio_crit = {}
+    for r in FUNNEL_PROG_MEDIO:
+        if r['bottleneck'] != 'bueno':
+            m = r['medio']
+            medio_crit[m] = medio_crit.get(m, 0) + 1
+    top_medios = sorted(medio_crit.items(), key=lambda x: -x[1])[:3]
+    if top_medios:
+        med_str = ', '.join(f'<b>{m}</b> ({n})' for m, n in top_medios)
+        insight2 = f'Los medios con más combinaciones críticas son: {med_str}.'
+    else:
+        insight2 = 'Sin medios con combinaciones críticas identificadas.'
+
+    insight_html = (
+        f'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:16px;">'
+        f'<div style="font-size:11px;color:#78350f;line-height:1.6;">'
+        f'<p style="margin-bottom:6px;">📊 {insight1}</p>'
+        f'<p>🎯 {insight2}</p>'
+        f'</div></div>'
+    )
+
+    separator = (
+        f'<hr style="border:none;border-top:2px solid #e2e8f0;margin:28px 0 20px;">'
+        f'<div class="sec-hdr">Diagnóstico por Programa × Medio '
+        f'<span>¿Qué combinación específica está fallando? · Mayo vs Marzo 2026 · ≥50 leads/mes</span></div>'
+        f'<div class="alert ainfo" style="margin-bottom:14px;"><span>i</span><div>'
+        f'<b>Cómo leer:</b> cada fila es una combinación programa+medio. '
+        f'<b>Δ Cont</b> y <b>Δ Ef</b> muestran el cambio vs Marzo (negativo = empeoró). '
+        f'<b>Problema</b> = cuello de botella en Mayo. Chip naranja = medio pago, gris = orgánico.'
+        f'</div></div>'
+    )
+
+    return separator + insight_html + table_a + table_b
+
+
+diagnostico_html = build_diagnostico_html()
+diag_medio_html  = build_diag_medio_html()
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BUILD ALL HTML SECTIONS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1814,6 +2335,7 @@ HTML = f"""<!DOCTYPE html>
   <a id="nav-canal"    onclick="showTab('canal')">Canal x Programa</a>
   <a id="nav-medios"   onclick="showTab('medios')">Medios MX</a>
   <a id="nav-acciones" onclick="showTab('acciones')">Acciones</a>
+  <a id="nav-diag"     onclick="showTab('diag')">Diagnóstico</a>
   <a id="nav-inv"      onclick="showTab('inv')">Inversión</a>
 </div>
 
@@ -1876,6 +2398,13 @@ HTML = f"""<!DOCTYPE html>
 <div class="tab" id="tab-acciones">
   <div class="sec-hdr">Acciones concretas <span>Solo MX · generado desde datos reales de Mayo 2026 · ordenadas por urgencia</span></div>
   {acciones_html}
+</div>
+
+<!-- DIAGNÓSTICO -->
+<div class="tab" id="tab-diag">
+  <div class="sec-hdr">Diagnóstico de Funnel MX <span>¿Qué cambió y dónde rompe? · Marzo vs Mayo 2026 · por programa</span></div>
+  {diagnostico_html}
+  {diag_medio_html}
 </div>
 
 <!-- INVERSIÓN x CANAL -->
