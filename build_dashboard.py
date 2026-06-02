@@ -1145,81 +1145,174 @@ def country_grid_html():
 
 # ── Dynamic actions table (MX only, no international conclusions) ──────────────
 def build_acciones_html(prog_list, medio_dict, avg_cr_val):
-    """Generate action table dynamically from real data. MX only."""
-    actions = []  # list of (urgencia_rank, urgencia_lbl, urgencia_cls, accion, porque, area)
+    """Resumen ejecutivo completo — cruza todas las fuentes de datos."""
 
-    # ── MEDIOS: identify from May CR ──
-    EXCLUIR = {'NO IDENTIFICADO', 'Test - Google', 'Pixel', 'Otros Orgánico', 'Otros Organico'}
-    for medio, mdata in medio_dict.items():
-        if medio in EXCLUIR: continue
-        rows = mdata['rows'] if isinstance(mdata, dict) else mdata
-        may_row = next((r for r in rows if 'May' in r['mes']), None)
-        if not may_row or may_row['leads'] < 200: continue
-        may_cr_v = may_row['cr']
-        may_l    = may_row['leads']
-        pct_c    = may_row.get('pct_contact', 0)
+    def card(icon, urgencia, urgencia_cls, titulo, porque, fuente):
+        urg_colors = {'u-hoy': ('#dc2626','#fff8f8','#fca5a5'),
+                      'u-sem': ('#d97706','#fffbeb','#fcd34d'),
+                      'u-qui': ('#2563eb','#eff6ff','#93c5fd'),
+                      'u-ops': ('#16a34a','#f0fdf4','#86efac')}
+        tc, bg, bc = urg_colors.get(urgencia_cls, ('#64748b','#f8fafc','#cbd5e1'))
+        return (
+            f'<div style="background:{bg};border-radius:10px;border:1px solid {bc};'
+            f'padding:12px 14px;display:flex;gap:12px;align-items:flex-start;">'
+            f'<div style="font-size:20px;line-height:1;flex-shrink:0;">{icon}</div>'
+            f'<div style="flex:1;min-width:0;">'
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+            f'<span style="background:{tc};color:white;padding:2px 8px;border-radius:20px;'
+            f'font-size:9px;font-weight:800;">{urgencia}</span>'
+            f'<span style="font-size:9px;color:#94a3b8;font-weight:600;">{fuente}</span>'
+            f'</div>'
+            f'<div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:3px;">{titulo}</div>'
+            f'<div style="font-size:11px;color:#475569;line-height:1.4;">{porque}</div>'
+            f'</div></div>'
+        )
 
-        if may_cr_v < 0.15 and may_l > 500:
-            actions.append((1, 'HOY', 'u-hoy',
-                f'Pausar o auditar <b>{medio}</b>',
-                f'CR Mayo {fmt_cr(may_cr_v)}% con {fmt_k(may_l)} leads. ROI prácticamente nulo.',
-                'Medios'))
-        elif pct_c > 0 and pct_c < 20 and may_l > 500:
-            actions.append((1, 'HOY', 'u-hoy',
-                f'Revisar contactabilidad <b>{medio}</b>',
-                f'Solo {pct_c:.0f}% de los leads son contactados en Mayo. Problema CRM/asignación.',
-                'Operaciones'))
-        elif may_cr_v >= avg_cr_val * 1.5 and may_l >= 100:
-            actions.append((2, 'ESTA SEMANA', 'u-sem',
-                f'Escalar presupuesto <b>{medio}</b>',
-                f'CR Mayo {fmt_cr(may_cr_v)}% — {round(may_cr_v/avg_cr_val,1)}x el promedio MX. Alto retorno probado.',
-                'Medios'))
-        elif 0.15 <= may_cr_v < avg_cr_val * 0.7 and may_l > 1000:
-            actions.append((2, 'ESTA SEMANA', 'u-sem',
-                f'Optimizar segmentación <b>{medio}</b>',
-                f'CR Mayo {fmt_cr(may_cr_v)}% con {fmt_k(may_l)} leads. Revisar creatividades y audiencia.',
-                'Medios'))
+    acciones_hoy  = []
+    acciones_sem  = []
+    acciones_escalar = []
 
-    # ── PROGRAMAS: alto volumen, CR bajo ──
-    progs_sorted_vol = sorted(prog_list, key=lambda x: -x.get('may_l', x['abr_l']))
+    EXCLUIR_MED = {'NO IDENTIFICADO','Test - Google','Pixel','Otros Orgánico','Otros Organico'}
+    EXCLUIR_ORG = {'Inbound','Referidos','Sitio Web','Blog','Primerpaso','Otros Organico','Islas/Hub','Empresarial'}
+
+    # ── 1. FUNNEL: programas con contactación bajísima (< 40%) por canal ──────
+    if FUNNEL_PROG_MEDIO:
+        # Worst contact rate combos with high leads
+        contact_issues = sorted(
+            [r for r in FUNNEL_PROG_MEDIO
+             if r.get('months', {}).get('may', {}).get('leads', r.get('may_leads',0)) >= 300
+             and r.get('months', {}).get('may', {}).get('pct_cont', r.get('pct_cont',100)) < 40
+             and r['medio'] not in EXCLUIR_ORG],
+            key=lambda r: -r.get('months',{}).get('may',{}).get('leads', r.get('may_leads',0))
+        )[:3]
+        for r in contact_issues:
+            ml = r.get('months',{}).get('may',{}).get('leads', r.get('may_leads',0))
+            pc = r.get('months',{}).get('may',{}).get('pct_cont', r.get('pct_cont',0))
+            acciones_hoy.append(card('🚨','HOY — URGENTE','u-hoy',
+                f'Contactación crítica: <b>{shorten(r["prog"],35)}</b> en <b>{r["medio"]}</b>',
+                f'Solo {pc:.0f}% de los {fmt_k(ml)} leads de mayo son contactados. '
+                f'Revisar asignación en CRM — leads cayendo sin ser llamados.',
+                'Funnel · Programa × Canal'))
+
+        # Programs where efectividad dropped vs March
+        ef_drops = sorted(
+            [r for r in FUNNEL_PROG_MEDIO
+             if r.get('months',{}).get('may',{}).get('leads', r.get('may_leads',0)) >= 200
+             and r.get('delta_ef', 0) < -8
+             and r['medio'] not in EXCLUIR_ORG],
+            key=lambda r: r.get('delta_ef', 0)
+        )[:3]
+        for r in ef_drops:
+            ml = r.get('months',{}).get('may',{}).get('leads', r.get('may_leads',0))
+            d  = r.get('delta_ef', 0)
+            pe = r.get('months',{}).get('may',{}).get('pct_ef', r.get('pct_ef',0))
+            acciones_sem.append(card('📉','ESTA SEMANA','u-sem',
+                f'Efectividad cayó: <b>{shorten(r["prog"],35)}</b> en <b>{r["medio"]}</b>',
+                f'%Efectividad: {pe:.0f}% (Δ {d:.0f}pp vs Marzo). Se contacta pero no convence. '
+                f'Revisar discurso del asesor y calidad del lead.',
+                'Funnel · Programa × Canal'))
+
+    # ── 2. INVERSIÓN: canales con alto gasto y CR bajo ────────────────────────
+    if INV_CANAL:
+        paid = [c for c in INV_CANAL if c['inversion'] > 500_000 and c['cr'] < avg_cr_val * 0.6
+                and c['canal'] not in EXCLUIR_ORG and 'org' not in c['canal'].lower()]
+        paid_sorted = sorted(paid, key=lambda c: -c['inversion'])[:2]
+        for c in paid_sorted:
+            def fmt_mx_l(n):
+                return f'${n/1_000_000:.1f}M' if n>=1_000_000 else f'${n/1_000:.0f}K'
+            cpa_s = f'CPA ${c["cpa"]:,.0f}' if c['cpa'] else 'sin dato de CPA'
+            acciones_hoy.append(card('💸','HOY — REVISAR','u-hoy',
+                f'Alto gasto, bajo retorno: <b>{c["canal"]}</b>',
+                f'{fmt_mx_l(c["inversion"])} invertidos en mayo · CR {fmt_cr(c["cr"])}% · {cpa_s}. '
+                f'CR es {round((avg_cr_val - c["cr"])/avg_cr_val*100):.0f}% por debajo del promedio MX. '
+                f'Revisar segmentación o reasignar presupuesto.',
+                'Inversión · Canal'))
+
+        # Canal con mejor ROI → escalar
+        best = sorted([c for c in INV_CANAL if c['inversion'] > 0 and c['ventas'] >= 30
+                       and 'org' not in c['canal'].lower()],
+                      key=lambda c: c['cpa'] or 99999)
+        if best:
+            b = best[0]
+            def fmt_mx_b(n): return f'${n/1_000_000:.1f}M' if n>=1_000_000 else f'${n/1_000:.0f}K'
+            acciones_escalar.append(card('📈','ESCALAR','u-ops',
+                f'Mejor ROI: aumentar inversión en <b>{b["canal"]}</b>',
+                f'CPA ${b["cpa"]:,.0f} — el más eficiente. CR {fmt_cr(b["cr"])}% con {fmt_k(b["ventas"])} ventas en mayo. '
+                f'Cada peso invertido acá genera más retorno que en cualquier otro canal pago.',
+                'Inversión · Canal'))
+
+    # ── 3. PROGRAMAS MX: alto volumen, CR muy bajo ────────────────────────────
+    progs_sorted_vol = sorted(prog_list, key=lambda x: -x.get('may_l', x.get('abr_l',0)))
     oportunidades = [p for p in progs_sorted_vol
-                     if p.get('may_l', p['abr_l']) >= 800
-                     and (p.get('may_cr') or p['abr_cr']) < avg_cr_val * 0.75][:3]
+                     if p.get('may_l', p.get('abr_l',0)) >= 1000
+                     and (p.get('may_cr') or p.get('abr_cr',0)) < avg_cr_val * 0.65][:3]
     for p in oportunidades:
-        cr_v = p.get('may_cr') or p['abr_cr']
-        vol  = p.get('may_l', p['abr_l'])
-        actions.append((2, 'ESTA SEMANA', 'u-sem',
-            f'Revisar seguimiento <b>{shorten(p["prog"], 42)}</b>',
-            f'{fmt_k(vol)} leads Mayo al {fmt_cr(cr_v)}% CR. El volumen no es el problema — es el proceso de contacto.',
-            'Operaciones'))
+        cr_v = p.get('may_cr') or p.get('abr_cr',0)
+        vol  = p.get('may_l', p.get('abr_l',0))
+        gap  = round(avg_cr_val - cr_v, 2)
+        extra_mats = round(vol * gap / 100)
+        acciones_sem.append(card('🎯','ESTA SEMANA','u-sem',
+            f'Oportunidad de cierre: <b>{shorten(p["prog"],40)}</b>',
+            f'{fmt_k(vol)} leads en mayo al {fmt_cr(cr_v)}% CR (promedio: {fmt_cr(avg_cr_val)}%). '
+            f'Si llega al promedio: +{extra_mats} matrículas extra sin más inversión. '
+            f'Priorizar seguimiento y contactación.',
+            'Programas MX'))
 
-    # ── PROGRAMAS: CR muy alto → escalar ──
-    top_progs = sorted([p for p in prog_list if p.get('may_l', p['abr_l']) >= 300],
-                       key=lambda x: -(x.get('may_cr') or x['abr_cr']))[:2]
+    # ── 4. PROGRAMAS MX: CR alto → escalar captación ─────────────────────────
+    top_progs = sorted([p for p in prog_list if p.get('may_l', p.get('abr_l',0)) >= 200],
+                       key=lambda x: -(x.get('may_cr') or x.get('abr_cr',0)))[:2]
     for p in top_progs:
-        cr_v = p.get('may_cr') or p['abr_cr']
+        cr_v = p.get('may_cr') or p.get('abr_cr',0)
         if cr_v >= avg_cr_val * 1.8:
-            actions.append((3, 'ESTA QUINCENA', 'u-qui',
-                f'Aumentar captación <b>{shorten(p["prog"], 42)}</b>',
-                f'CR Mayo {fmt_cr(cr_v)}% — {round(cr_v/avg_cr_val,1)}x el promedio. Cada lead extra tiene alto retorno.',
-                'Estrategia'))
+            acciones_escalar.append(card('🟢','ESCALAR','u-ops',
+                f'Aumentar captación: <b>{shorten(p["prog"],40)}</b>',
+                f'CR {fmt_cr(cr_v)}% — {round(cr_v/avg_cr_val,1)}x el promedio MX. '
+                f'Cada lead extra en este programa tiene alto retorno. Aumentar presupuesto en canales donde convierte mejor.',
+                'Programas MX'))
 
-    # Sort by urgencia, deduplicate, cap at 8
-    actions.sort(key=lambda x: x[0])
-    actions = actions[:8]
+    # ── 5. CONTACTACIÓN YoY: alerta si cayó ──────────────────────────────────
+    for medio_key, mdata in medio_dict.items():
+        if not isinstance(mdata, dict): continue
+        alert = mdata.get('alert')
+        if not alert: continue
+        acciones_hoy.append(card('⚠️','HOY — ALERTA','u-hoy',
+            f'Contactación YoY cayó en <b>{medio_key}</b>',
+            f'%Contacto {alert["pc_26"]:.0f}% vs {alert["pc_25"]:.0f}% año anterior '
+            f'({alert["diff_pc"]:+.1f}pp). Mismo período, mucho menos contacto. '
+            f'Investigar cambio en proceso o asignación.',
+            'Medios MX · Contactación'))
+        break  # solo la primera alerta aquí, no repetir
 
-    if not actions:
-        return '<div class="alert ainfo"><span>i</span><div>Sin acciones críticas detectadas esta semana.</div></div>'
+    # ── Ensamblar output ──────────────────────────────────────────────────────
+    html = ''
 
-    rows_html = ''
-    for i, (_, urg_lbl, urg_cls, accion, porque, area) in enumerate(actions, 1):
-        rows_html += (f'<tr><td><b>{i}</b></td><td>{accion}</td><td>{porque}</td>'
-                      f'<td>{area}</td><td>MX</td>'
-                      f'<td><span class="urg {urg_cls}">{urg_lbl}</span></td></tr>')
+    if acciones_hoy:
+        html += f'<div class="sec-hdr">🚨 Atención inmediata <span>Requieren acción hoy o mañana</span></div>'
+        html += f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;margin-bottom:20px;">'
+        html += ''.join(acciones_hoy)
+        html += '</div>'
 
-    return (f'<table class="acc-table"><thead>'
-            f'<tr><th>#</th><th>Acción</th><th>Por qué</th><th>Área</th><th>País</th><th>Urgencia</th></tr>'
-            f'</thead><tbody>{rows_html}</tbody></table>')
+    if acciones_sem:
+        html += f'<div class="sec-hdr">📋 Esta semana <span>Importante pero no urgente — planificar antes del viernes</span></div>'
+        html += f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;margin-bottom:20px;">'
+        html += ''.join(acciones_sem)
+        html += '</div>'
+
+    if acciones_escalar:
+        html += f'<div class="sec-hdr">📈 Escalar <span>Lo que está funcionando — aumentar volumen o inversión</span></div>'
+        html += f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;margin-bottom:20px;">'
+        html += ''.join(acciones_escalar)
+        html += '</div>'
+
+    if not html:
+        html = '<div class="alert ag"><span>✓</span><div>Sin alertas críticas esta semana. Todo el funnel dentro de parámetros normales.</div></div>'
+
+    note = (f'<div class="alert ainfo"><span>i</span><div>'
+            f'Generado automáticamente cruzando: Funnel por programa×canal · Inversión por canal · '
+            f'Programas MX · Contactación MX vs año anterior · Mayo 2026'
+            f'</div></div>')
+
+    return note + html
 
 # ── Inversión x Canal tab ─────────────────────────────────────────────────────
 def build_inv_canal_html(inv_canal):
@@ -1875,7 +1968,7 @@ def build_diag_medio_html():
         f'</div></div>'
     )
 
-    return separator + insight_html + table_a + table_b
+    return separator + insight_html + table_a
 
 
 diagnostico_html         = build_diagnostico_html()
@@ -1907,11 +2000,13 @@ def build_funnel_interactivo_html():
             leads = sum(r.get('months', {}).get(mk, {}).get('leads', 0) for r in medio_rows)
             cont  = sum(r.get('months', {}).get(mk, {}).get('contacto', 0) for r in medio_rows)
             util  = sum(r.get('months', {}).get(mk, {}).get('util', 0) for r in medio_rows)
+            refs  = sum(r.get('months', {}).get(mk, {}).get('refs', 0) for r in medio_rows)
             ven   = sum(r.get('months', {}).get(mk, {}).get('ventas', 0) for r in medio_rows)
             agg[mk] = {
-                'leads': leads, 'contacto': cont, 'util': util, 'ventas': ven,
+                'leads': leads, 'contacto': cont, 'util': util, 'refs': refs, 'ventas': ven,
                 'pct_cont': round(cont / leads * 100, 1) if leads > 0 else 0.0,
                 'pct_ef':   round(util / cont  * 100, 1) if cont  > 0 else 0.0,
+                'pct_ref':  round(refs / util  * 100, 1) if util  > 0 else 0.0,
                 'cr':       round(ven  / leads * 100, 2) if leads > 0 else 0.0,
             }
         return agg
@@ -1940,19 +2035,26 @@ def build_funnel_interactivo_html():
             m = months.get(mk, {})
             month_attrs += (
                 f' data-{mk}-leads="{m.get("leads", 0)}"'
-                f' data-{mk}-pc="{m.get("pct_cont", 0)}"'
-                f' data-{mk}-pe="{m.get("pct_ef", 0)}"'
-                f' data-{mk}-cr="{m.get("cr", 0)}"'
                 f' data-{mk}-cont="{m.get("contacto", 0)}"'
+                f' data-{mk}-pc="{m.get("pct_cont", 0)}"'
                 f' data-{mk}-util="{m.get("util", 0)}"'
+                f' data-{mk}-pe="{m.get("pct_ef", 0)}"'
+                f' data-{mk}-refs="{m.get("refs", 0)}"'
+                f' data-{mk}-pr="{m.get("pct_ref", 0)}"'
                 f' data-{mk}-ven="{m.get("ventas", 0)}"'
+                f' data-{mk}-cr="{m.get("cr", 0)}"'
             )
 
         # Use may data for initial display
         may_m = months.get('may', {})
         may_leads = may_m.get('leads', 0)
+        may_cont  = may_m.get('contacto', 0)
         may_pc    = may_m.get('pct_cont', 0)
+        may_util  = may_m.get('util', 0)
         may_pe    = may_m.get('pct_ef', 0)
+        may_refs  = may_m.get('refs', 0)
+        may_pr    = may_m.get('pct_ref', 0)
+        may_ven   = may_m.get('ventas', 0)
         may_cr    = may_m.get('cr', 0)
 
         # Escaped program name for JS
@@ -1981,25 +2083,41 @@ def build_funnel_interactivo_html():
                 m = cr_months.get(mk, {})
                 canal_month_attrs += (
                     f' data-{mk}-leads="{m.get("leads", 0)}"'
+                    f' data-{mk}-cont="{m.get("contacto", 0)}"'
                     f' data-{mk}-pc="{m.get("pct_cont", 0)}"'
+                    f' data-{mk}-util="{m.get("util", 0)}"'
                     f' data-{mk}-pe="{m.get("pct_ef", 0)}"'
+                    f' data-{mk}-refs="{m.get("refs", 0)}"'
+                    f' data-{mk}-pr="{round(m.get('refs',0)/m.get('util',1)*100,1) if m.get('util',0)>0 else 0}"'
+                    f' data-{mk}-ven="{m.get("ventas", 0)}"'
                     f' data-{mk}-cr="{m.get("cr", 0)}"'
                 )
 
-            c_may = cr_months.get('may', {})
-            c_leads = c_may.get('leads', 0)
-            c_pc    = c_may.get('pct_cont', 0)
-            c_pe    = c_may.get('pct_ef', 0)
-            c_cr    = c_may.get('cr', 0)
+            c_may  = cr_months.get('may', {})
+            c_leads= c_may.get('leads', 0)
+            c_cont = c_may.get('contacto', 0)
+            c_pc   = c_may.get('pct_cont', 0)
+            c_util = c_may.get('util', 0)
+            c_pe   = c_may.get('pct_ef', 0)
+            c_refs = c_may.get('refs', 0)
+            c_pr   = round(c_refs/c_util*100,1) if c_util > 0 else 0
+            c_ven  = c_may.get('ventas', 0)
+            c_cr   = c_may.get('cr', 0)
+            def _rc(v): return '#16a34a' if v >= 15 else ('#d97706' if v >= 8 else '#dc2626')
 
             canal_html += (
                 f'<tr class="canal-sub-row" data-prog-id="{prog_id}" id="crow-{canal_id}"{canal_month_attrs}'
                 f' style="display:none;background:#f8fafc;">'
-                f'<td style="padding:4px 10px 4px 28px;font-size:10px;font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;">'
-                f'{medio_name}</td>'
-                f'<td class="c-leads" style="padding:4px 8px;text-align:right;font-size:10px;color:#64748b;border-bottom:1px solid #f1f5f9;">{c_leads}</td>'
-                f'<td class="c-pc" style="padding:4px 8px;text-align:right;font-size:10px;font-weight:700;border-bottom:1px solid #f1f5f9;color:{_fi_pc_col(c_pc)};">{c_pc:.0f}%</td>'
-                f'<td class="c-pe" style="padding:4px 8px;text-align:right;font-size:10px;font-weight:700;border-bottom:1px solid #f1f5f9;color:{_fi_pe_col(c_pe)};">{c_pe:.0f}%</td>'
+                f'<td style="padding:4px 10px 4px 28px;font-size:10px;font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;white-space:nowrap;">'
+                f'↳ {medio_name}</td>'
+                f'<td class="c-leads" style="padding:4px 6px;text-align:right;font-size:10px;color:#64748b;border-bottom:1px solid #f1f5f9;">{fmt_k(c_leads)}</td>'
+                f'<td class="c-cont" style="padding:4px 6px;text-align:right;font-size:10px;color:#94a3b8;border-bottom:1px solid #f1f5f9;">{fmt_k(c_cont)}</td>'
+                f'<td class="c-pc" style="padding:4px 6px;text-align:right;font-size:10px;font-weight:700;border-bottom:1px solid #f1f5f9;color:{_fi_pc_col(c_pc)};">{c_pc:.0f}%</td>'
+                f'<td class="c-util" style="padding:4px 6px;text-align:right;font-size:10px;color:#94a3b8;border-bottom:1px solid #f1f5f9;">{fmt_k(c_util)}</td>'
+                f'<td class="c-pe" style="padding:4px 6px;text-align:right;font-size:10px;font-weight:700;border-bottom:1px solid #f1f5f9;color:{_fi_pe_col(c_pe)};">{c_pe:.0f}%</td>'
+                f'<td class="c-refs" style="padding:4px 6px;text-align:right;font-size:10px;color:#94a3b8;border-bottom:1px solid #f1f5f9;">{c_refs}</td>'
+                f'<td class="c-pr" style="padding:4px 6px;text-align:right;font-size:10px;font-weight:600;border-bottom:1px solid #f1f5f9;color:{_rc(c_pr)};">{c_pr:.0f}%</td>'
+                f'<td class="c-ven" style="padding:4px 6px;text-align:right;font-size:10px;font-weight:700;color:#1e293b;border-bottom:1px solid #f1f5f9;">{c_ven}</td>'
                 f'<td class="c-cr" style="padding:4px 8px;text-align:right;font-size:11px;font-weight:800;border-bottom:1px solid #f1f5f9;color:{_fi_cr_col(c_cr)};">{c_cr:.2f}%</td>'
                 f'<td style="border-bottom:1px solid #f1f5f9;"></td>'
                 f'</tr>'
@@ -2015,17 +2133,23 @@ def build_funnel_interactivo_html():
             f'title="Ver canales">+</button>'
         ) if canal_html else ''
 
+        def _ref_col(v): return '#16a34a' if v >= 15 else ('#d97706' if v >= 8 else '#dc2626')
         prog_rows_html += (
             f'<tr class="prog-row" data-prog="{prog_name_esc}" data-prog-id="{prog_id}"{month_attrs}'
             f' style="border-bottom:1px solid #e2e8f0;">'
-            f'<td style="padding:5px 10px;font-size:11px;font-weight:700;color:#1e293b;max-width:280px;'
+            f'<td style="padding:5px 10px;font-size:11px;font-weight:700;color:#1e293b;max-width:240px;'
             f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{prog_name_esc}">'
-            f'{prog_short}</td>'
-            f'<td class="p-leads" style="padding:5px 8px;text-align:right;font-size:11px;color:#64748b;">{may_leads}</td>'
-            f'<td class="p-pc" style="padding:5px 8px;text-align:right;font-size:11px;font-weight:700;color:{_fi_pc_col(may_pc)};">{may_pc:.0f}%</td>'
-            f'<td class="p-pe" style="padding:5px 8px;text-align:right;font-size:11px;font-weight:700;color:{_fi_pe_col(may_pe)};">{may_pe:.0f}%</td>'
+            f'{new_badge(prog_name,7)}{prog_short}</td>'
+            f'<td class="p-leads" style="padding:5px 6px;text-align:right;font-size:11px;color:#64748b;">{fmt_k(may_leads)}</td>'
+            f'<td class="p-cont" style="padding:5px 6px;text-align:right;font-size:10px;color:#94a3b8;">{fmt_k(may_cont)}</td>'
+            f'<td class="p-pc" style="padding:5px 6px;text-align:right;font-size:11px;font-weight:700;color:{_fi_pc_col(may_pc)};">{may_pc:.0f}%</td>'
+            f'<td class="p-util" style="padding:5px 6px;text-align:right;font-size:10px;color:#94a3b8;">{fmt_k(may_util)}</td>'
+            f'<td class="p-pe" style="padding:5px 6px;text-align:right;font-size:11px;font-weight:700;color:{_fi_pe_col(may_pe)};">{may_pe:.0f}%</td>'
+            f'<td class="p-refs" style="padding:5px 6px;text-align:right;font-size:10px;color:#94a3b8;">{fmt_k(may_refs)}</td>'
+            f'<td class="p-pr" style="padding:5px 6px;text-align:right;font-size:10px;font-weight:600;color:{_ref_col(may_pr)};">{may_pr:.0f}%</td>'
+            f'<td class="p-ven" style="padding:5px 6px;text-align:right;font-size:11px;font-weight:700;color:#1e293b;">{may_ven}</td>'
             f'<td class="p-cr" style="padding:5px 8px;text-align:right;font-size:14px;font-weight:900;color:{_fi_cr_col(may_cr)};">{may_cr:.2f}%</td>'
-            f'<td style="padding:5px 8px;text-align:center;">{expand_btn}</td>'
+            f'<td style="padding:5px 6px;text-align:center;">{expand_btn}</td>'
             f'</tr>'
             f'{canal_html}'
         )
@@ -2048,16 +2172,32 @@ def build_funnel_interactivo_html():
         f'</div>'
     )
 
-    # Table header
+    def _th(label, cls='', color='#94a3b8'):
+        return (f'<th style="padding:6px 6px;font-size:9px;font-weight:700;color:{color};'
+                f'text-transform:uppercase;text-align:right;white-space:nowrap;">{label}</th>')
+
+    # Table header — full funnel
     table_header = (
-        f'<thead><tr style="background:#0f172a;position:sticky;top:0;z-index:3;">'
-        f'<th style="padding:8px 10px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:left;min-width:220px;">Programa</th>'
-        f'<th style="padding:8px 8px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:right;white-space:nowrap;">Leads</th>'
-        f'<th style="padding:8px 8px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:right;white-space:nowrap;">%Cont</th>'
-        f'<th style="padding:8px 8px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:right;white-space:nowrap;">%Ef</th>'
-        f'<th id="fi-cr-th" style="padding:8px 8px;font-size:9px;font-weight:700;color:white;text-transform:uppercase;text-align:right;white-space:nowrap;">CR%</th>'
-        f'<th style="padding:8px 8px;font-size:9px;color:#94a3b8;text-align:center;white-space:nowrap;"></th>'
-        f'</tr></thead>'
+        f'<thead>'
+        f'<tr style="background:#0f172a;position:sticky;top:0;z-index:3;">'
+        f'<th colspan="1" style="padding:6px 10px;font-size:9px;font-weight:700;color:#94a3b8;text-align:left;min-width:220px;">PROGRAMA</th>'
+        f'<th colspan="2" style="padding:6px 6px;font-size:9px;font-weight:700;color:#64748b;text-align:center;border-left:1px solid #1e293b;">LEADS → CONTACTO</th>'
+        f'<th colspan="2" style="padding:6px 6px;font-size:9px;font-weight:700;color:#64748b;text-align:center;border-left:1px solid #1e293b;">CONT → ÚTIL</th>'
+        f'<th colspan="2" style="padding:6px 6px;font-size:9px;font-weight:700;color:#64748b;text-align:center;border-left:1px solid #1e293b;">ÚTIL → REFS</th>'
+        f'<th colspan="1" style="padding:6px 6px;font-size:9px;font-weight:700;color:#64748b;text-align:center;border-left:1px solid #1e293b;">VENTAS</th>'
+        f'<th colspan="1" style="padding:6px 8px;font-size:9px;font-weight:700;color:white;text-align:right;border-left:1px solid #334155;">CR%</th>'
+        f'<th style="padding:6px 4px;"></th>'
+        f'</tr>'
+        f'<tr style="background:#0f172a;border-bottom:1px solid #334155;">'
+        f'<th style="padding:4px 10px;"></th>'
+        f'{_th("Leads")}{_th("%Cont","","#7dd3fc")}'
+        f'{_th("Útil","","#94a3b8")}{_th("%Ef","","#7dd3fc")}'
+        f'{_th("Refs","","#94a3b8")}{_th("%Ref","","#7dd3fc")}'
+        f'{_th("Ventas","","#f9a8d4")}'
+        f'{_th("CR%","","white")}'
+        f'<th style="padding:4px 4px;"></th>'
+        f'</tr>'
+        f'</thead>'
     )
 
     # JS for interactivity
@@ -2132,16 +2272,38 @@ def build_funnel_interactivo_html():
       subRows.forEach(function(sr) {{ tbody.appendChild(sr); }});
     }});
 
+  function refCol(v) {{
+    if (v < 8)  return '#dc2626';
+    if (v < 15) return '#d97706';
+    return '#16a34a';
+  }}
+  function fmtK(n) {{
+    if (n >= 1000) return (n/1000).toFixed(1) + 'k';
+    return String(n);
+  }}
+
     // Update visibility and cell values for prog rows
     visible.forEach(function(d) {{
-      d.tr.style.display = '';
-      d.tr.querySelector('.p-leads').textContent = d.leads;
-      d.tr.querySelector('.p-pc').textContent    = d.pc.toFixed(0) + '%';
-      d.tr.querySelector('.p-pc').style.color    = pcCol(d.pc);
-      d.tr.querySelector('.p-pe').textContent    = d.pe.toFixed(0) + '%';
-      d.tr.querySelector('.p-pe').style.color    = peCol(d.pe);
-      d.tr.querySelector('.p-cr').textContent    = d.cr.toFixed(2) + '%';
-      d.tr.querySelector('.p-cr').style.color    = crCol(d.cr);
+      var tr = d.tr; var m = currentMonth;
+      var cont = parseFloat(tr.getAttribute('data-'+m+'-cont')||0);
+      var util = parseFloat(tr.getAttribute('data-'+m+'-util')||0);
+      var refs = parseFloat(tr.getAttribute('data-'+m+'-refs')||0);
+      var pr   = parseFloat(tr.getAttribute('data-'+m+'-pr')||0);
+      var ven  = parseFloat(tr.getAttribute('data-'+m+'-ven')||0);
+      tr.style.display = '';
+      tr.querySelector('.p-leads').textContent = fmtK(d.leads);
+      tr.querySelector('.p-cont').textContent  = fmtK(cont);
+      tr.querySelector('.p-pc').textContent    = d.pc.toFixed(0) + '%';
+      tr.querySelector('.p-pc').style.color    = pcCol(d.pc);
+      tr.querySelector('.p-util').textContent  = fmtK(util);
+      tr.querySelector('.p-pe').textContent    = d.pe.toFixed(0) + '%';
+      tr.querySelector('.p-pe').style.color    = peCol(d.pe);
+      tr.querySelector('.p-refs').textContent  = refs;
+      tr.querySelector('.p-pr').textContent    = pr.toFixed(0) + '%';
+      tr.querySelector('.p-pr').style.color    = refCol(pr);
+      tr.querySelector('.p-ven').textContent   = ven;
+      tr.querySelector('.p-cr').textContent    = d.cr.toFixed(2) + '%';
+      tr.querySelector('.p-cr').style.color    = crCol(d.cr);
     }});
     hidden.forEach(function(d) {{
       d.tr.style.display = 'none';
@@ -2161,19 +2323,26 @@ def build_funnel_interactivo_html():
       if (cr_tr.style.display === 'none') return;  // collapsed — update when expanded
 
       var leads = parseFloat(cr_tr.getAttribute('data-' + m + '-leads') || 0);
-      var pc    = parseFloat(cr_tr.getAttribute('data-' + m + '-pc')    || 0);
-      var pe    = parseFloat(cr_tr.getAttribute('data-' + m + '-pe')    || 0);
-      var cr    = parseFloat(cr_tr.getAttribute('data-' + m + '-cr')    || 0);
-
-      if (leads < 30) {{
-        cr_tr.style.display = 'none';
-        return;
-      }}
-      cr_tr.querySelector('.c-leads').textContent = leads;
+      if (leads < 30) {{ cr_tr.style.display = 'none'; return; }}
+      var cont = parseFloat(cr_tr.getAttribute('data-' + m + '-cont') || 0);
+      var pc   = parseFloat(cr_tr.getAttribute('data-' + m + '-pc')   || 0);
+      var util = parseFloat(cr_tr.getAttribute('data-' + m + '-util') || 0);
+      var pe   = parseFloat(cr_tr.getAttribute('data-' + m + '-pe')   || 0);
+      var refs = parseFloat(cr_tr.getAttribute('data-' + m + '-refs') || 0);
+      var pr   = parseFloat(cr_tr.getAttribute('data-' + m + '-pr')   || 0);
+      var ven  = parseFloat(cr_tr.getAttribute('data-' + m + '-ven')  || 0);
+      var cr   = parseFloat(cr_tr.getAttribute('data-' + m + '-cr')   || 0);
+      cr_tr.querySelector('.c-leads').textContent = fmtK(leads);
+      cr_tr.querySelector('.c-cont').textContent  = fmtK(cont);
       cr_tr.querySelector('.c-pc').textContent    = pc.toFixed(0) + '%';
       cr_tr.querySelector('.c-pc').style.color    = pcCol(pc);
+      cr_tr.querySelector('.c-util').textContent  = fmtK(util);
       cr_tr.querySelector('.c-pe').textContent    = pe.toFixed(0) + '%';
       cr_tr.querySelector('.c-pe').style.color    = peCol(pe);
+      cr_tr.querySelector('.c-refs').textContent  = refs;
+      cr_tr.querySelector('.c-pr').textContent    = pr.toFixed(0) + '%';
+      cr_tr.querySelector('.c-pr').style.color    = refCol(pr);
+      cr_tr.querySelector('.c-ven').textContent   = ven;
       cr_tr.querySelector('.c-cr').textContent    = cr.toFixed(2) + '%';
       cr_tr.querySelector('.c-cr').style.color    = crCol(cr);
     }});
@@ -2190,19 +2359,30 @@ def build_funnel_interactivo_html():
       if (btn) btn.textContent = '+';
     }} else {{
       subRows.forEach(function(sr) {{
-        var leads = parseFloat(sr.getAttribute('data-' + currentMonth + '-leads') || 0);
+        var cm = currentMonth;
+        var leads= parseFloat(sr.getAttribute('data-'+cm+'-leads')||0);
         if (leads < 30) {{ sr.style.display = 'none'; return; }}
-        // Update cells to current month
-        var pc = parseFloat(sr.getAttribute('data-' + currentMonth + '-pc') || 0);
-        var pe = parseFloat(sr.getAttribute('data-' + currentMonth + '-pe') || 0);
-        var cr = parseFloat(sr.getAttribute('data-' + currentMonth + '-cr') || 0);
-        sr.querySelector('.c-leads').textContent = leads;
-        sr.querySelector('.c-pc').textContent    = pc.toFixed(0) + '%';
-        sr.querySelector('.c-pc').style.color    = (pc < 50 ? '#dc2626' : pc < 57 ? '#d97706' : '#16a34a');
-        sr.querySelector('.c-pe').textContent    = pe.toFixed(0) + '%';
-        sr.querySelector('.c-pe').style.color    = (pe < 20 ? '#dc2626' : pe < 27 ? '#d97706' : '#16a34a');
-        sr.querySelector('.c-cr').textContent    = cr.toFixed(2) + '%';
-        sr.querySelector('.c-cr').style.color    = (cr < 1.0 ? '#dc2626' : cr < 1.5 ? '#d97706' : '#16a34a');
+        var cont= parseFloat(sr.getAttribute('data-'+cm+'-cont')||0);
+        var pc  = parseFloat(sr.getAttribute('data-'+cm+'-pc')  ||0);
+        var util= parseFloat(sr.getAttribute('data-'+cm+'-util')||0);
+        var pe  = parseFloat(sr.getAttribute('data-'+cm+'-pe')  ||0);
+        var refs= parseFloat(sr.getAttribute('data-'+cm+'-refs')||0);
+        var pr  = parseFloat(sr.getAttribute('data-'+cm+'-pr')  ||0);
+        var ven = parseFloat(sr.getAttribute('data-'+cm+'-ven') ||0);
+        var cr  = parseFloat(sr.getAttribute('data-'+cm+'-cr')  ||0);
+        sr.querySelector('.c-leads').textContent= fmtK(leads);
+        sr.querySelector('.c-cont').textContent = fmtK(cont);
+        sr.querySelector('.c-pc').textContent   = pc.toFixed(0)+'%';
+        sr.querySelector('.c-pc').style.color   = pcCol(pc);
+        sr.querySelector('.c-util').textContent = fmtK(util);
+        sr.querySelector('.c-pe').textContent   = pe.toFixed(0)+'%';
+        sr.querySelector('.c-pe').style.color   = peCol(pe);
+        sr.querySelector('.c-refs').textContent = refs;
+        sr.querySelector('.c-pr').textContent   = pr.toFixed(0)+'%';
+        sr.querySelector('.c-pr').style.color   = refCol(pr);
+        sr.querySelector('.c-ven').textContent  = ven;
+        sr.querySelector('.c-cr').textContent   = cr.toFixed(2)+'%';
+        sr.querySelector('.c-cr').style.color   = crCol(cr);
         sr.style.display = '';
       }});
       if (btn) btn.textContent = '-';
