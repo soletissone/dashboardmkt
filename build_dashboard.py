@@ -19,6 +19,7 @@ MEDIO           = D['medio_stats']
 CANAL_TREND_MX  = D.get('canal_trend_mx', {})
 MAY_F           = D['may_factor']
 MAY_D           = D['may_days']
+INV_CANAL       = D.get('inv_canal', [])
 
 # Global set of NEW program names (used for badges across all views)
 NEW_PROGS = {p['prog'] for p in PROG_MX if p.get('is_new')}
@@ -1216,6 +1217,343 @@ def build_acciones_html(prog_list, medio_dict, avg_cr_val):
             f'<tr><th>#</th><th>Acción</th><th>Por qué</th><th>Área</th><th>País</th><th>Urgencia</th></tr>'
             f'</thead><tbody>{rows_html}</tbody></table>')
 
+# ── Inversión x Canal tab ─────────────────────────────────────────────────────
+def build_inv_canal_html(inv_canal):
+    if not inv_canal:
+        return '<div class="alert aw"><span>!</span><div>Sin datos de inversión. Asegurate de que RESUMEN*.xlsx esté en Downloads.</div></div>'
+
+    paid    = [c for c in inv_canal if c['inversion'] > 0]
+    organic = [c for c in inv_canal if c['inversion'] == 0 and (c['leads'] > 0 or c['ventas'] > 0)]
+
+    def fmt_mx(n):
+        if n >= 1_000_000: return f'${n/1_000_000:.1f}M'
+        if n >= 1_000:     return f'${n/1_000:.0f}K'
+        return f'${int(n)}'
+
+    def cr_col_inv(cr):
+        if cr >= 2.0: return '#16a34a'
+        if cr >= 1.0: return '#d97706'
+        return '#dc2626'
+
+    # ── KPI summary ──────────────────────────────────────────────────────────
+    total_inv  = sum(c['inversion'] for c in paid)
+    total_ven  = sum(c['ventas']    for c in paid)
+    total_lead = sum(c['leads']     for c in paid)
+    overall_cpl = round(total_inv / total_lead, 0) if total_lead > 0 else 0
+    overall_cpa = round(total_inv / total_ven,  0) if total_ven  > 0 else 0
+
+    kpi_bar = (
+        f'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">'
+        f'<div class="kpi b"><div class="lbl">Total Inversión Mayo</div><div class="val">{fmt_mx(total_inv)}</div><div class="sub">{len(paid)} canales pago</div></div>'
+        f'<div class="kpi n"><div class="lbl">CPL Promedio</div><div class="val">${overall_cpl:,.0f}</div><div class="sub">Inversión / Leads</div></div>'
+        f'<div class="kpi n"><div class="lbl">CPA Promedio</div><div class="val">${overall_cpa:,.0f}</div><div class="sub">Inversión / Ventas</div></div>'
+        f'<div class="kpi g"><div class="lbl">Ventas Totales (pago)</div><div class="val">{fmt_k(total_ven)}</div><div class="sub">{fmt_k(total_lead)} leads</div></div>'
+        f'</div>'
+    )
+
+    # ── Build program × canal pivot ──────────────────────────────────────────
+    # Collect all programs from all canales
+    prog_totals = {}  # prog → {leads, ventas}
+    canal_prog  = {}  # canal → {prog → {leads, ventas}}
+    for c in inv_canal:
+        cname = c['canal']
+        canal_prog[cname] = {}
+        for p in c['progs']:
+            pn = p['prog']
+            canal_prog[cname][pn] = {'leads': p['leads'], 'ventas': p['ventas']}
+            if pn not in prog_totals:
+                prog_totals[pn] = {'leads': 0, 'ventas': 0}
+            prog_totals[pn]['leads']  += p['leads']
+            prog_totals[pn]['ventas'] += p['ventas']
+
+    # Sort programs by total ventas desc
+    all_progs = sorted(prog_totals.keys(), key=lambda p: -prog_totals[p]['ventas'])
+
+    # Use only paid canales as columns (sorted by inversion desc)
+    col_canales = paid  # already sorted by inversion
+
+    # ── Table header ─────────────────────────────────────────────────────────
+    # Row 1: canal names (spanning 2 sub-cols each)
+    # Row 2: Leads | Ventas per canal
+    th_canal_names = '<th style="background:#1e293b;color:white;font-size:9px;font-weight:700;padding:6px 10px;text-align:left;position:sticky;left:0;z-index:2;min-width:200px;">PROGRAMA</th>'
+    th_canal_names += '<th colspan="3" style="background:#334155;color:#94a3b8;font-size:9px;font-weight:700;padding:5px 8px;text-align:center;border-left:2px solid #1e293b;">TOTAL</th>'
+    for c in col_canales:
+        cpl_str = f'CPL ${c["cpl"]:,.0f}' if c['cpl'] else ''
+        cpa_str = f'CPA ${c["cpa"]:,.0f}' if c['cpa'] else ''
+        inv_str = fmt_mx(c['inversion'])
+        subtitle = f'{inv_str} · {cpl_str} · {cpa_str}'
+        th_canal_names += (
+            f'<th colspan="3" style="background:#1e3a5f;color:white;font-size:9px;font-weight:800;'
+            f'padding:5px 8px;text-align:center;border-left:2px solid #0f172a;white-space:nowrap;">'
+            f'{c["canal"]}<br><span style="font-weight:400;color:#94a3b8;font-size:8px;">{subtitle}</span></th>'
+        )
+
+    th_sub = '<th style="background:#0f172a;color:#64748b;font-size:8px;padding:4px 6px;text-align:right;position:sticky;left:0;"></th>'
+    th_sub += '<th style="background:#0f172a;color:#94a3b8;font-size:8px;padding:4px 8px;text-align:right;white-space:nowrap;">Leads</th>'
+    th_sub += '<th style="background:#0f172a;color:#94a3b8;font-size:8px;padding:4px 8px;text-align:right;white-space:nowrap;">Ventas</th>'
+    th_sub += '<th style="background:#0f172a;color:#94a3b8;font-size:8px;padding:4px 8px;text-align:right;white-space:nowrap;">CR%</th>'
+    for c in col_canales:
+        cr_c = cr_col_inv(c['cr'])
+        cr_str = f'<span style="color:{cr_c};font-weight:800;">{fmt_cr(c["cr"])}%</span>'
+        th_sub += (
+            f'<th style="background:#0f172a;color:#94a3b8;font-size:8px;padding:4px 6px;'
+            f'text-align:right;border-left:1px solid #1e293b;white-space:nowrap;">L</th>'
+            f'<th style="background:#0f172a;color:#94a3b8;font-size:8px;padding:4px 6px;'
+            f'text-align:right;white-space:nowrap;">V</th>'
+            f'<th style="background:#0f172a;font-size:8px;padding:4px 6px;'
+            f'text-align:right;white-space:nowrap;">{cr_str}</th>'
+        )
+
+    # ── Table rows ────────────────────────────────────────────────────────────
+    tbody = ''
+    for i, pn in enumerate(all_progs[:60]):
+        tot = prog_totals[pn]
+        tot_cr = round(tot['ventas']/tot['leads']*100, 1) if tot['leads'] > 0 else 0
+        cr_c = cr_col_inv(tot_cr)
+        bg = '#ffffff' if i % 2 == 0 else '#f8fafc'
+        pn_short = shorten(pn, 42)
+        is_new_row = 'true' if pn in NEW_PROGS else 'false'
+        row = (
+            f'<td style="background:{bg};font-size:10px;font-weight:600;color:#1e293b;'
+            f'padding:5px 10px;position:sticky;left:0;white-space:nowrap;border-bottom:1px solid #f1f5f9;'
+            f'border-right:1px solid #e2e8f0;" title="{pn}">{new_badge(pn,7)}{pn_short}</td>'
+            f'<td style="background:{bg};font-size:10px;text-align:right;padding:5px 8px;border-bottom:1px solid #f1f5f9;color:#475569;">{fmt_k(tot["leads"])}</td>'
+            f'<td style="background:{bg};font-size:10px;font-weight:700;text-align:right;padding:5px 8px;border-bottom:1px solid #f1f5f9;">{tot["ventas"]}</td>'
+            f'<td style="background:{bg};font-size:10px;font-weight:800;text-align:right;padding:5px 8px;border-bottom:1px solid #f1f5f9;color:{cr_c};">{fmt_cr(tot_cr)}%</td>'
+        )
+        for c in col_canales:
+            cp = canal_prog.get(c['canal'], {}).get(pn)
+            if cp and (cp['leads'] > 0 or cp['ventas'] > 0):
+                p_cr = round(cp['ventas']/cp['leads']*100, 1) if cp['leads'] > 0 else 0
+                p_cr_c = cr_col_inv(p_cr)
+                row += (
+                    f'<td style="background:{bg};font-size:10px;text-align:right;padding:5px 6px;'
+                    f'border-bottom:1px solid #f1f5f9;border-left:1px solid #e8edf2;color:#475569;">{fmt_k(cp["leads"])}</td>'
+                    f'<td style="background:{bg};font-size:10px;font-weight:700;text-align:right;padding:5px 6px;border-bottom:1px solid #f1f5f9;">{cp["ventas"]}</td>'
+                    f'<td style="background:{bg};font-size:10px;font-weight:800;text-align:right;padding:5px 6px;border-bottom:1px solid #f1f5f9;color:{p_cr_c};">{fmt_cr(p_cr)}%</td>'
+                )
+            else:
+                row += (
+                    f'<td style="background:{bg};border-bottom:1px solid #f1f5f9;border-left:1px solid #e8edf2;"></td>'
+                    f'<td style="background:{bg};border-bottom:1px solid #f1f5f9;"></td>'
+                    f'<td style="background:{bg};border-bottom:1px solid #f1f5f9;"></td>'
+                )
+        tbody += f'<tr data-new="{is_new_row}">{row}</tr>'
+
+    # ── Totals footer ─────────────────────────────────────────────────────────
+    foot = (
+        f'<td style="background:#0f172a;color:white;font-size:10px;font-weight:800;'
+        f'padding:6px 10px;position:sticky;left:0;">TOTAL CANALES</td>'
+        f'<td style="background:#0f172a;color:#94a3b8;font-size:10px;text-align:right;padding:6px 8px;">{fmt_k(total_lead)}</td>'
+        f'<td style="background:#0f172a;color:white;font-size:10px;font-weight:800;text-align:right;padding:6px 8px;">{fmt_k(total_ven)}</td>'
+        f'<td style="background:#0f172a;color:#94a3b8;font-size:10px;text-align:right;padding:6px 8px;">{fmt_cr(round(total_ven/total_lead*100,1) if total_lead else 0)}%</td>'
+    )
+    for c in col_canales:
+        foot += (
+            f'<td style="background:#0f172a;color:#94a3b8;font-size:10px;text-align:right;padding:6px 6px;border-left:1px solid #334155;">{fmt_k(c["leads"])}</td>'
+            f'<td style="background:#0f172a;color:white;font-size:10px;font-weight:800;text-align:right;padding:6px 6px;">{fmt_k(c["ventas"])}</td>'
+            f'<td style="background:#0f172a;color:#94a3b8;font-size:10px;text-align:right;padding:6px 6px;">{fmt_cr(c["cr"])}%</td>'
+        )
+
+    table = (
+        f'<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.08);">'
+        f'<table style="border-collapse:collapse;width:max-content;min-width:100%;font-family:inherit;">'
+        f'<thead>'
+        f'<tr>{th_canal_names}</tr>'
+        f'<tr>{th_sub}</tr>'
+        f'</thead>'
+        f'<tbody>{tbody}</tbody>'
+        f'<tfoot><tr>{foot}</tr></tfoot>'
+        f'</table></div>'
+    )
+
+    # ── Organic summary row ───────────────────────────────────────────────────
+    org_rows = ''
+    for c in organic:
+        cr_c = cr_col_inv(c['cr'])
+        org_rows += (
+            f'<div style="display:flex;align-items:center;gap:12px;padding:6px 14px;'
+            f'border-bottom:1px solid #f1f5f9;font-size:11px;">'
+            f'<div style="flex:1;font-weight:600;color:#475569;">{c["canal"]}</div>'
+            f'<div style="color:#64748b;white-space:nowrap;">{fmt_k(c["leads"])} leads</div>'
+            f'<div style="font-weight:700;white-space:nowrap;">{fmt_k(c["ventas"])} ventas</div>'
+            f'<div style="font-weight:800;color:{cr_c};white-space:nowrap;">{fmt_cr(c["cr"])}%</div>'
+            f'<div style="color:#94a3b8;white-space:nowrap;">sin inversión directa</div>'
+            f'</div>'
+        )
+    org_section = ''
+    if org_rows:
+        org_section = (
+            f'<div class="sec-hdr" style="margin-top:4px;">Canales Orgánicos <span>Sin inversión directa · Mayo 2026</span></div>'
+            f'<div style="background:white;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;">{org_rows}</div>'
+        )
+
+    info = (
+        f'<div class="alert ainfo" style="margin-bottom:14px;"><span>i</span><div>'
+        f'Programas ordenados por <b>ventas totales desc</b> · Canales por <b>inversión desc</b> · '
+        f'L=Leads · V=Ventas · CR% por celda · CPL/CPA en header de cada canal · '
+        f'<span style="color:#16a34a;font-weight:700;">Verde ≥ 2%</span> · '
+        f'<span style="color:#d97706;font-weight:700;">Naranja ≥ 1%</span> · '
+        f'<span style="color:#dc2626;font-weight:700;">Rojo &lt; 1%</span> · MX · Mayo 2026'
+        f'</div></div>'
+    )
+
+    # ── Recomendaciones programa × canal ─────────────────────────────────────
+    def conclusiones():
+        if not paid: return ''
+
+        # CR promedio por canal (para comparar cada programa contra su propio canal)
+        canal_avg_cr = {c['canal']: c['cr'] for c in paid}
+
+        invertir = []   # (canal, prog, leads, ventas, cr, canal_avg)
+        pausar   = []   # idem
+
+        # Excluir orgánicos (inversion=0) y canales con "organico/inbound/referido" en el nombre
+        EXCLUIR_REC = {'Inbound', 'Referidos', 'Sitio Web', 'Blog', 'Primerpaso',
+                       'Otros Organico', 'Otros Orgánico', 'Islas/Hub', 'Empresarial'}
+        def es_organico(canal):
+            return ('org' in canal.lower() or canal in EXCLUIR_REC)
+
+        for c in paid:
+            cname    = c['canal']
+            if es_organico(cname): continue
+            avg_cr_c = c['cr']  # CR promedio del canal completo
+            for pn, pdata in canal_prog.get(cname, {}).items():
+                l = pdata['leads']; v = pdata['ventas']
+                if l < 100: continue  # muy poco volumen para concluir
+                cr = round(v / l * 100, 2) if l > 0 else 0
+
+                # INVERTIR: CR del programa > 1.5x promedio del canal y mínimo 3 ventas
+                if avg_cr_c > 0 and cr >= avg_cr_c * 1.5 and v >= 3:
+                    invertir.append({'canal': cname, 'prog': pn, 'leads': l,
+                                     'ventas': v, 'cr': cr, 'canal_avg': avg_cr_c})
+
+                # PAUSAR: CR < 50% del promedio del canal con volumen significativo
+                elif avg_cr_c > 0 and cr < avg_cr_c * 0.5 and l >= 300:
+                    pausar.append({'canal': cname, 'prog': pn, 'leads': l,
+                                   'ventas': v, 'cr': cr, 'canal_avg': avg_cr_c})
+
+        # Sort: invertir por CR relativo desc, pausar por leads desc (más dinero quemado)
+        invertir.sort(key=lambda x: -(x['cr'] / x['canal_avg']) if x['canal_avg'] > 0 else 0)
+        pausar.sort(key=lambda x: -x['leads'])
+
+        def inv_row(r, i):
+            bg = '#f0fdf4' if i % 2 == 0 else '#ffffff'
+            ratio = round(r['cr'] / r['canal_avg'], 1) if r['canal_avg'] > 0 else '?'
+            return (
+                f'<div style="display:grid;grid-template-columns:1fr 130px 80px 70px 70px 60px;'
+                f'align-items:center;padding:7px 14px;background:{bg};border-bottom:1px solid #f0fdf4;gap:8px;">'
+                f'<div style="font-size:11px;font-weight:700;color:#1e293b;">{new_badge(r["prog"],7)}{shorten(r["prog"],42)}</div>'
+                f'<div style="font-size:10px;color:#475569;font-weight:600;">{r["canal"]}</div>'
+                f'<div style="font-size:10px;text-align:right;color:#64748b;">{fmt_k(r["leads"])} leads</div>'
+                f'<div style="font-size:10px;text-align:right;font-weight:700;">{r["ventas"]} ventas</div>'
+                f'<div style="font-size:11px;text-align:right;font-weight:800;color:#16a34a;">{fmt_cr(r["cr"])}%</div>'
+                f'<div style="font-size:10px;text-align:right;color:#16a34a;font-weight:700;">{ratio}×</div>'
+                f'</div>'
+            )
+
+        def pau_row(r, i):
+            bg = '#fff8f8' if i % 2 == 0 else '#ffffff'
+            ratio = round(r['cr'] / r['canal_avg'], 2) if r['canal_avg'] > 0 else '?'
+            return (
+                f'<div style="display:grid;grid-template-columns:1fr 130px 80px 70px 70px 60px;'
+                f'align-items:center;padding:7px 14px;background:{bg};border-bottom:1px solid #fff8f8;gap:8px;">'
+                f'<div style="font-size:11px;font-weight:700;color:#1e293b;">{new_badge(r["prog"],7)}{shorten(r["prog"],42)}</div>'
+                f'<div style="font-size:10px;color:#475569;font-weight:600;">{r["canal"]}</div>'
+                f'<div style="font-size:10px;text-align:right;color:#64748b;">{fmt_k(r["leads"])} leads</div>'
+                f'<div style="font-size:10px;text-align:right;font-weight:700;">{r["ventas"]} ventas</div>'
+                f'<div style="font-size:11px;text-align:right;font-weight:800;color:#dc2626;">{fmt_cr(r["cr"])}%</div>'
+                f'<div style="font-size:10px;text-align:right;color:#dc2626;font-weight:700;">{ratio}×</div>'
+                f'</div>'
+            )
+
+        def col_hdr(bg):
+            return (
+                f'<div style="display:grid;grid-template-columns:1fr 130px 80px 70px 70px 60px;'
+                f'padding:6px 14px;background:{bg};gap:8px;">'
+                f'<div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Programa</div>'
+                f'<div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Canal</div>'
+                f'<div style="font-size:9px;color:#94a3b8;text-align:right;text-transform:uppercase;">Leads</div>'
+                f'<div style="font-size:9px;color:#94a3b8;text-align:right;text-transform:uppercase;">Ventas</div>'
+                f'<div style="font-size:9px;color:#94a3b8;text-align:right;text-transform:uppercase;">CR%</div>'
+                f'<div style="font-size:9px;color:#94a3b8;text-align:right;text-transform:uppercase;">vs canal</div>'
+                f'</div>'
+            )
+
+        html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px;">'
+
+        # Invertir más
+        inv_body = col_hdr('#166534') + ''.join(inv_row(r, i) for i, r in enumerate(invertir[:20]))
+        if not invertir:
+            inv_body += '<div style="padding:14px;color:#94a3b8;font-size:11px;">Sin programas con CR destacado en este período.</div>'
+        html += (
+            f'<div>'
+            f'<div style="background:#166534;border-radius:10px 10px 0 0;padding:10px 14px;">'
+            f'<div style="color:white;font-size:13px;font-weight:800;">📈 INVERTIR MÁS</div>'
+            f'<div style="color:#bbf7d0;font-size:10px;margin-top:2px;">CR del programa ≥ 1.5× el promedio del canal · mínimo 100 leads</div>'
+            f'</div>'
+            f'<div style="background:white;border-radius:0 0 10px 10px;border:1px solid #dcfce7;overflow:hidden;">'
+            f'{inv_body}</div></div>'
+        )
+
+        # Pausar / revisar
+        pau_body = col_hdr('#7f1d1d') + ''.join(pau_row(r, i) for i, r in enumerate(pausar[:20]))
+        if not pausar:
+            pau_body += '<div style="padding:14px;color:#94a3b8;font-size:11px;">Sin programas con CR crítico en este período.</div>'
+        html += (
+            f'<div>'
+            f'<div style="background:#7f1d1d;border-radius:10px 10px 0 0;padding:10px 14px;">'
+            f'<div style="color:white;font-size:13px;font-weight:800;">🛑 PAUSAR / REVISAR</div>'
+            f'<div style="color:#fecaca;font-size:10px;margin-top:2px;">CR del programa &lt; 50% del promedio del canal · mínimo 300 leads</div>'
+            f'</div>'
+            f'<div style="background:white;border-radius:0 0 10px 10px;border:1px solid #fee2e2;overflow:hidden;">'
+            f'{pau_body}</div></div>'
+        )
+
+        html += '</div>'
+        return (
+            f'<div class="sec-hdr" style="margin-top:16px;">Recomendaciones por programa × canal '
+            f'<span>CR de cada programa comparado contra el promedio real del canal · Mayo 2026</span></div>'
+            + html
+        )
+
+    n_new = sum(1 for p in all_progs[:60] if p in NEW_PROGS)
+    n_old = len(all_progs[:60]) - n_new
+
+    filtros = (
+        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">'
+        f'<span style="font-size:11px;color:#64748b;font-weight:600;">Filtrar programas:</span>'
+        f'<button onclick="filtrarInv(\'all\')" id="finv-all" '
+        f'style="padding:4px 14px;border-radius:20px;border:1px solid #cbd5e1;background:#1e293b;color:white;'
+        f'font-size:11px;font-weight:700;cursor:pointer;">Todos ({len(all_progs[:60])})</button>'
+        f'<button onclick="filtrarInv(\'new\')" id="finv-new" '
+        f'style="padding:4px 14px;border-radius:20px;border:1px solid #7c3aed;background:white;color:#7c3aed;'
+        f'font-size:11px;font-weight:700;cursor:pointer;">✨ Nuevos ({n_new})</button>'
+        f'<button onclick="filtrarInv(\'old\')" id="finv-old" '
+        f'style="padding:4px 14px;border-radius:20px;border:1px solid #cbd5e1;background:white;color:#475569;'
+        f'font-size:11px;font-weight:700;cursor:pointer;">Existentes ({n_old})</button>'
+        f'</div>'
+        f'<script>'
+        f'function filtrarInv(f){{'
+        f'  document.querySelectorAll("#tab-inv tbody tr").forEach(r=>{{'
+        f'    var isNew=r.dataset.new==="true";'
+        f'    r.style.display=(f==="all"||(f==="new"&&isNew)||(f==="old"&&!isNew))?"":"none";'
+        f'  }});'
+        f'  ["all","new","old"].forEach(id=>{{'
+        f'    var b=document.getElementById("finv-"+id);'
+        f'    b.style.background=id===f?"#1e293b":"white";'
+        f'    b.style.color=id===f?"white":(id==="new"?"#7c3aed":"#475569");'
+        f'  }});'
+        f'}}'
+        f'</script>'
+    )
+
+    hdr = f'<div class="sec-hdr">Programas × Canales <span>Mayo 2026 · {len(all_progs)} programas · scroll horizontal →</span></div>'
+    return kpi_bar + info + filtros + hdr + table + org_section + conclusiones()
+
+
+inv_canal_html = build_inv_canal_html(INV_CANAL)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BUILD ALL HTML SECTIONS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1476,6 +1814,7 @@ HTML = f"""<!DOCTYPE html>
   <a id="nav-canal"    onclick="showTab('canal')">Canal x Programa</a>
   <a id="nav-medios"   onclick="showTab('medios')">Medios MX</a>
   <a id="nav-acciones" onclick="showTab('acciones')">Acciones</a>
+  <a id="nav-inv"      onclick="showTab('inv')">Inversión</a>
 </div>
 
 {filter_bar}
@@ -1537,6 +1876,12 @@ HTML = f"""<!DOCTYPE html>
 <div class="tab" id="tab-acciones">
   <div class="sec-hdr">Acciones concretas <span>Solo MX · generado desde datos reales de Mayo 2026 · ordenadas por urgencia</span></div>
   {acciones_html}
+</div>
+
+<!-- INVERSIÓN x CANAL -->
+<div class="tab" id="tab-inv">
+  <div class="sec-hdr">Inversión x Canal <span>Mayo 2026 · Fuente: RESUMEN · Top 5 programas por canal (MX)</span></div>
+  {inv_canal_html}
 </div>
 
 </div>
