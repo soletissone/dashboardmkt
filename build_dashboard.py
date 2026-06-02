@@ -1635,201 +1635,7 @@ def build_diagnostico_html():
         f'</div>'
     )
 
-    # Section 2: 4 buckets
-    bucket_contacto    = [p for p in FUNNEL_PROG if p['bottleneck'] == 'contacto']
-    bucket_efectividad = [p for p in FUNNEL_PROG if p['bottleneck'] == 'efectividad']
-    bucket_cierre      = [p for p in FUNNEL_PROG if p['bottleneck'] == 'cierre']
-    bucket_escalar     = [p for p in FUNNEL_PROG if p['bottleneck'] == 'escalar']
-
-    def bucket_rows_contacto(progs, limit=8):
-        if not progs:
-            return '<div style="color:#94a3b8;font-size:10px;padding:8px;">Sin programas en este cuadrante.</div>'
-        rows = ''
-        for p in progs[:limit]:
-            d = p['trend_pct_cont']
-            d_col = '#16a34a' if d >= 0 else '#dc2626'
-            sign  = '+' if d >= 0 else ''
-            rows += (
-                f'<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;'
-                f'border-bottom:1px solid rgba(0,0,0,.05);font-size:11px;">'
-                f'<div style="flex:1;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
-                f'title="{p["prog"]}">{shorten(p["prog"], 38)}</div>'
-                f'<div style="color:#64748b;white-space:nowrap;">{fmt_k(p["may_leads"])} leads</div>'
-                f'<div style="font-weight:800;color:#dc2626;white-space:nowrap;">{p["may"]["pct_cont"]:.0f}%</div>'
-                f'<div style="color:{d_col};font-weight:700;font-size:10px;white-space:nowrap;">{sign}{d:.1f}pp</div>'
-                f'</div>'
-            )
-        return rows
-
-    def bucket_rows_ef(progs, limit=8):
-        if not progs:
-            return '<div style="color:#94a3b8;font-size:10px;padding:8px;">Sin programas en este cuadrante.</div>'
-        rows = ''
-        for p in progs[:limit]:
-            d = p['trend_pct_ef']
-            d_col = '#16a34a' if d >= 0 else '#dc2626'
-            sign  = '+' if d >= 0 else ''
-            rows += (
-                f'<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;'
-                f'border-bottom:1px solid rgba(0,0,0,.05);font-size:11px;">'
-                f'<div style="flex:1;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
-                f'title="{p["prog"]}">{shorten(p["prog"], 38)}</div>'
-                f'<div style="color:#64748b;white-space:nowrap;">{fmt_k(p["may_leads"])} leads</div>'
-                f'<div style="font-weight:800;color:#ea580c;white-space:nowrap;">{p["may"]["pct_ef"]:.0f}%</div>'
-                f'<div style="color:{d_col};font-weight:700;font-size:10px;white-space:nowrap;">{sign}{d:.1f}pp</div>'
-                f'</div>'
-            )
-        return rows
-
-    def bucket_rows_cr(progs, key_color, limit=8):
-        if not progs:
-            return '<div style="color:#94a3b8;font-size:10px;padding:8px;">Sin programas en este cuadrante.</div>'
-        rows = ''
-        for p in progs[:limit]:
-            d = p['trend_cr']
-            d_col = '#16a34a' if d >= 0 else '#dc2626'
-            sign  = '+' if d >= 0 else ''
-            rows += (
-                f'<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;'
-                f'border-bottom:1px solid rgba(0,0,0,.05);font-size:11px;">'
-                f'<div style="flex:1;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
-                f'title="{p["prog"]}">{shorten(p["prog"], 38)}</div>'
-                f'<div style="color:#64748b;white-space:nowrap;">{fmt_k(p["may_leads"])} leads</div>'
-                f'<div style="font-weight:800;color:{key_color};white-space:nowrap;">{p["may"]["cr"]:.2f}%</div>'
-                f'<div style="color:{d_col};font-weight:700;font-size:10px;white-space:nowrap;">{sign}{d:.2f}pp</div>'
-                f'</div>'
-            )
-        return rows
-
-    col_hdr = (
-        '<div style="display:flex;gap:8px;padding:4px 10px;background:rgba(0,0,0,.06);'
-        'font-size:9px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;">'
-        '<div style="flex:1;">Programa</div>'
-        '<div style="white-space:nowrap;">Leads May</div>'
-        '<div style="white-space:nowrap;min-width:40px;text-align:right;">Métrica</div>'
-        '<div style="white-space:nowrap;min-width:48px;text-align:right;">Δ vs Mar</div>'
-        '</div>'
-    )
-
-    def bucket_card(icon, title, subtitle, desc, color, bg_card, progs_html, n_progs):
-        return (
-            f'<div style="background:white;border-radius:12px;border:2px solid {color};overflow:hidden;">'
-            f'<div style="background:{color};padding:10px 14px;">'
-            f'<div style="color:white;font-size:13px;font-weight:800;">{icon} {title} <span style="font-size:10px;font-weight:400;opacity:.85;">({n_progs} programas)</span></div>'
-            f'<div style="color:rgba(255,255,255,.85);font-size:10px;margin-top:2px;">{subtitle}</div>'
-            f'</div>'
-            f'{col_hdr}'
-            f'<div style="background:{bg_card};">{progs_html}</div>'
-            f'<div style="padding:6px 10px;background:{bg_card};border-top:1px solid {color}22;">'
-            f'<span style="font-size:10px;color:#64748b;">{desc}</span></div>'
-            f'</div>'
-        )
-
-    b1 = bucket_card('🔴', 'CONTACTO BAJO', '%Contacto &lt; 50% en Mayo',
-                     'El equipo no llega a estos leads. Revisar asignación y CRM.',
-                     '#dc2626', '#fff8f8',
-                     bucket_rows_contacto(bucket_contacto), len(bucket_contacto))
-
-    b2 = bucket_card('🟠', 'EFECTIVIDAD BAJA', '%Cont ≥ 50% pero %Ef &lt; 20%',
-                     'Se llama pero no convence. Revisar pitch y calidad del lead.',
-                     '#ea580c', '#fff7ed',
-                     bucket_rows_ef(bucket_efectividad), len(bucket_efectividad))
-
-    b3 = bucket_card('🟡', 'CIERRE BAJO', '%Cont ≥ 50%, %Ef ≥ 20% pero CR &lt; 1.2%',
-                     'Lead interesado pero no cierra. Revisar seguimiento y propuesta.',
-                     '#d97706', '#fffbeb',
-                     bucket_rows_cr(bucket_cierre, '#d97706'), len(bucket_cierre))
-
-    b4 = bucket_card('🟢', 'ESCALAR', '%Cont ≥ 50%, %Ef ≥ 20%, CR ≥ 1.2%',
-                     'Funnel sano — necesitan más leads para crecer.',
-                     '#16a34a', '#f0fdf4',
-                     bucket_rows_cr(bucket_escalar, '#16a34a'), len(bucket_escalar))
-
-    s2 = (
-        f'<div class="sec-hdr">¿Dónde rompe el funnel? — Diagnóstico por programa <span>Mayo 2026 · ordenado por leads desc</span></div>'
-        f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;">'
-        f'{b1}{b2}{b3}{b4}'
-        f'</div>'
-    )
-
-    # Section 3: Most deteriorated programs
-    deteriorated = [
-        p for p in FUNNEL_PROG
-        if p['trend_pct_cont'] < -5 or p['trend_pct_ef'] < -5 or p['trend_cr'] < -0.5
-    ]
-    # Sort by worst combined drop (sum of negative deltas, normalized)
-    def drop_magnitude(p):
-        pc_drop = min(0, p['trend_pct_cont']) / 5   # normalize to same scale roughly
-        ef_drop = min(0, p['trend_pct_ef'])  / 5
-        cr_drop = min(0, p['trend_cr'])      / 0.5
-        return pc_drop + ef_drop + cr_drop
-
-    deteriorated.sort(key=drop_magnitude)
-    deteriorated = deteriorated[:10]
-
-    def delta_cell(val, threshold):
-        col = '#dc2626' if val < -threshold else ('#16a34a' if val > 0 else '#64748b')
-        sign = '+' if val > 0 else ''
-        return f'<td style="padding:6px 10px;text-align:right;font-weight:700;font-size:11px;color:{col};">{sign}{val}</td>'
-
-    det_rows = ''
-    for p in deteriorated:
-        mar = p['mar']; may = p['may']
-        pc_mar = mar['pct_cont']; pc_may = may['pct_cont']
-        ef_mar = mar['pct_ef'];   ef_may = may['pct_ef']
-        cr_mar = mar['cr'];       cr_may = may['cr']
-
-        pc_delta = round(pc_may - pc_mar, 1)
-        ef_delta = round(ef_may - ef_mar, 1)
-        cr_delta = round(cr_may - cr_mar, 2)
-
-        det_rows += (
-            f'<tr style="border-bottom:1px solid #f1f5f9;">'
-            f'<td style="padding:6px 10px;font-size:11px;font-weight:600;color:#1e293b;'
-            f'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
-            f'title="{p["prog"]}">{shorten(p["prog"], 36)}</td>'
-            f'<td style="padding:6px 10px;text-align:right;font-size:11px;color:#64748b;">{fmt_k(p["may_leads"])}</td>'
-            f'<td style="padding:6px 10px;text-align:center;font-size:10px;color:#475569;">{pc_mar:.0f}% → {pc_may:.0f}%</td>'
-            f'{delta_cell(pc_delta, 5)}'
-            f'<td style="padding:6px 10px;text-align:center;font-size:10px;color:#475569;">{ef_mar:.0f}% → {ef_may:.0f}%</td>'
-            f'{delta_cell(ef_delta, 5)}'
-            f'<td style="padding:6px 10px;text-align:center;font-size:10px;color:#475569;">{cr_mar:.2f}% → {cr_may:.2f}%</td>'
-            f'{delta_cell(cr_delta, 0.5)}'
-            f'</tr>'
-        )
-
-    if det_rows:
-        det_table = (
-            f'<div style="background:white;border-radius:12px;border:1px solid #fca5a5;overflow:hidden;'
-            f'box-shadow:0 1px 4px rgba(0,0,0,.06);">'
-            f'<div style="background:#dc2626;padding:10px 16px;">'
-            f'<span style="color:white;font-size:13px;font-weight:800;">⚠ Estos programas empeoraron significativamente desde marzo</span>'
-            f'<span style="color:rgba(255,255,255,.8);font-size:10px;margin-left:12px;">Top 10 por magnitud de caída · Δ = Mayo − Marzo</span>'
-            f'</div>'
-            f'<table style="width:100%;border-collapse:collapse;">'
-            f'<thead><tr style="background:#f8fafc;">'
-            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-transform:uppercase;text-align:left;">Programa</th>'
-            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:right;">Leads May</th>'
-            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:center;">%Cont Mar→May</th>'
-            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:right;">Δ</th>'
-            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:center;">%Ef Mar→May</th>'
-            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:right;">Δ</th>'
-            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:center;">CR Mar→May</th>'
-            f'<th style="padding:6px 10px;font-size:9px;color:#94a3b8;text-align:right;">Δ</th>'
-            f'</tr></thead>'
-            f'<tbody>{det_rows}</tbody>'
-            f'</table></div>'
-        )
-    else:
-        det_table = ('<div class="alert ag"><span>✓</span><div>Ningún programa muestra deterioro significativo '
-                     '(caída &gt;5pp en contacto/efectividad o &gt;0.5pp en CR) desde marzo.</div></div>')
-
-    s3 = (
-        f'<div class="sec-hdr" style="margin-top:4px;">Más deteriorados <span>Programas con caída significativa desde marzo</span></div>'
-        f'{det_table}'
-    )
-
-    return s1 + s2 + s3
+    return s1
 
 # ── Diagnóstico por Programa × Medio ──────────────────────────────────────────
 def build_diag_medio_html():
@@ -2072,8 +1878,373 @@ def build_diag_medio_html():
     return separator + insight_html + table_a + table_b
 
 
-diagnostico_html = build_diagnostico_html()
-diag_medio_html  = build_diag_medio_html()
+diagnostico_html         = build_diagnostico_html()
+diag_medio_html          = build_diag_medio_html()
+
+# ── Interactive funnel table (all 5 months, expandable canales) ───────────────
+def build_funnel_interactivo_html():
+    """Interactive program table with month filter bar and expandable canal sub-rows."""
+
+    if not FUNNEL_PROG_MEDIO:
+        return '<div class="alert aw"><span>!</span><div>Sin datos para tabla interactiva.</div></div>'
+
+    MONTH_KEYS   = ['ene', 'feb', 'mar', 'abr', 'may']
+    MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May*']
+
+    # Build lookup: prog_name → list of medio rows (from FUNNEL_PROG_MEDIO)
+    prog_medio_map = {}
+    for r in FUNNEL_PROG_MEDIO:
+        pn = r['prog']
+        if pn not in prog_medio_map:
+            prog_medio_map[pn] = []
+        prog_medio_map[pn].append(r)
+
+    # Aggregate program-level month data from FUNNEL_PROG_MEDIO (sum across medios)
+    # Then compute derived metrics (pct_cont, pct_ef, cr) from aggregated raw counts
+    def _agg_prog_months(medio_rows):
+        agg = {}
+        for mk in MONTH_KEYS:
+            leads = sum(r.get('months', {}).get(mk, {}).get('leads', 0) for r in medio_rows)
+            cont  = sum(r.get('months', {}).get(mk, {}).get('contacto', 0) for r in medio_rows)
+            util  = sum(r.get('months', {}).get(mk, {}).get('util', 0) for r in medio_rows)
+            ven   = sum(r.get('months', {}).get(mk, {}).get('ventas', 0) for r in medio_rows)
+            agg[mk] = {
+                'leads': leads, 'contacto': cont, 'util': util, 'ventas': ven,
+                'pct_cont': round(cont / leads * 100, 1) if leads > 0 else 0.0,
+                'pct_ef':   round(util / cont  * 100, 1) if cont  > 0 else 0.0,
+                'cr':       round(ven  / leads * 100, 2) if leads > 0 else 0.0,
+            }
+        return agg
+
+    # Build sorted list of programs: sorted by May CR desc (only progs with >=100 May leads initially)
+    prog_list_for_table = []
+    for prog_name, medio_rows in prog_medio_map.items():
+        agg = _agg_prog_months(medio_rows)
+        may_leads = agg['may']['leads']
+        prog_list_for_table.append({'prog': prog_name, 'months': agg, 'may_leads': may_leads})
+    prog_list_for_table.sort(key=lambda x: -x['months']['may']['cr'])
+
+    # Build program rows HTML with all month data attributes
+    prog_rows_html = ''
+    n_progs = 0
+    n_canales_total = 0
+
+    for p in prog_list_for_table:
+        months = p['months']
+        prog_name = p['prog']
+        prog_id = prog_name.replace(' ', '_').replace('/', '_').replace('.', '_').replace("'", '_')[:40]
+
+        # Build data attributes for each month
+        month_attrs = ''
+        for mk in MONTH_KEYS:
+            m = months.get(mk, {})
+            month_attrs += (
+                f' data-{mk}-leads="{m.get("leads", 0)}"'
+                f' data-{mk}-pc="{m.get("pct_cont", 0)}"'
+                f' data-{mk}-pe="{m.get("pct_ef", 0)}"'
+                f' data-{mk}-cr="{m.get("cr", 0)}"'
+                f' data-{mk}-cont="{m.get("contacto", 0)}"'
+                f' data-{mk}-util="{m.get("util", 0)}"'
+                f' data-{mk}-ven="{m.get("ventas", 0)}"'
+            )
+
+        # Use may data for initial display
+        may_m = months.get('may', {})
+        may_leads = may_m.get('leads', 0)
+        may_pc    = may_m.get('pct_cont', 0)
+        may_pe    = may_m.get('pct_ef', 0)
+        may_cr    = may_m.get('cr', 0)
+
+        # Escaped program name for JS
+        prog_name_esc = prog_name.replace('"', '&quot;').replace("'", "\\'")
+        prog_short    = shorten(prog_name, 48)
+
+        # Build canal sub-rows for this program
+        canal_rows = prog_medio_map.get(prog_name, [])
+        canal_rows_sorted = sorted(canal_rows, key=lambda r: -(r.get('months', {}).get('may', {}).get('leads', r.get('may_leads', 0))))
+
+        canal_html = ''
+        n_canales = 0
+        for cr_row in canal_rows_sorted:
+            cr_months = cr_row.get('months', {})
+            medio_name = cr_row['medio']
+
+            # Only include canal if at least one month has >= 30 leads
+            if not any(cr_months.get(mk, {}).get('leads', 0) >= 30 for mk in MONTH_KEYS):
+                continue
+
+            n_canales += 1
+            canal_id = f'{prog_id}__{medio_name.replace(" ", "_").replace("/", "_")[:20]}'
+
+            canal_month_attrs = ''
+            for mk in MONTH_KEYS:
+                m = cr_months.get(mk, {})
+                canal_month_attrs += (
+                    f' data-{mk}-leads="{m.get("leads", 0)}"'
+                    f' data-{mk}-pc="{m.get("pct_cont", 0)}"'
+                    f' data-{mk}-pe="{m.get("pct_ef", 0)}"'
+                    f' data-{mk}-cr="{m.get("cr", 0)}"'
+                )
+
+            c_may = cr_months.get('may', {})
+            c_leads = c_may.get('leads', 0)
+            c_pc    = c_may.get('pct_cont', 0)
+            c_pe    = c_may.get('pct_ef', 0)
+            c_cr    = c_may.get('cr', 0)
+
+            canal_html += (
+                f'<tr class="canal-sub-row" data-prog-id="{prog_id}" id="crow-{canal_id}"{canal_month_attrs}'
+                f' style="display:none;background:#f8fafc;">'
+                f'<td style="padding:4px 10px 4px 28px;font-size:10px;font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;">'
+                f'{medio_name}</td>'
+                f'<td class="c-leads" style="padding:4px 8px;text-align:right;font-size:10px;color:#64748b;border-bottom:1px solid #f1f5f9;">{c_leads}</td>'
+                f'<td class="c-pc" style="padding:4px 8px;text-align:right;font-size:10px;font-weight:700;border-bottom:1px solid #f1f5f9;color:{_fi_pc_col(c_pc)};">{c_pc:.0f}%</td>'
+                f'<td class="c-pe" style="padding:4px 8px;text-align:right;font-size:10px;font-weight:700;border-bottom:1px solid #f1f5f9;color:{_fi_pe_col(c_pe)};">{c_pe:.0f}%</td>'
+                f'<td class="c-cr" style="padding:4px 8px;text-align:right;font-size:11px;font-weight:800;border-bottom:1px solid #f1f5f9;color:{_fi_cr_col(c_cr)};">{c_cr:.2f}%</td>'
+                f'<td style="border-bottom:1px solid #f1f5f9;"></td>'
+                f'</tr>'
+            )
+
+        n_canales_total += n_canales
+        n_progs += 1
+
+        expand_btn = (
+            f'<button onclick="toggleProg(\'{prog_id}\')" id="btn-{prog_id}" '
+            f'style="background:#e2e8f0;border:none;border-radius:50%;width:20px;height:20px;'
+            f'font-size:11px;font-weight:800;cursor:pointer;color:#475569;line-height:1;padding:0;" '
+            f'title="Ver canales">+</button>'
+        ) if canal_html else ''
+
+        prog_rows_html += (
+            f'<tr class="prog-row" data-prog="{prog_name_esc}" data-prog-id="{prog_id}"{month_attrs}'
+            f' style="border-bottom:1px solid #e2e8f0;">'
+            f'<td style="padding:5px 10px;font-size:11px;font-weight:700;color:#1e293b;max-width:280px;'
+            f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{prog_name_esc}">'
+            f'{prog_short}</td>'
+            f'<td class="p-leads" style="padding:5px 8px;text-align:right;font-size:11px;color:#64748b;">{may_leads}</td>'
+            f'<td class="p-pc" style="padding:5px 8px;text-align:right;font-size:11px;font-weight:700;color:{_fi_pc_col(may_pc)};">{may_pc:.0f}%</td>'
+            f'<td class="p-pe" style="padding:5px 8px;text-align:right;font-size:11px;font-weight:700;color:{_fi_pe_col(may_pe)};">{may_pe:.0f}%</td>'
+            f'<td class="p-cr" style="padding:5px 8px;text-align:right;font-size:14px;font-weight:900;color:{_fi_cr_col(may_cr)};">{may_cr:.2f}%</td>'
+            f'<td style="padding:5px 8px;text-align:center;">{expand_btn}</td>'
+            f'</tr>'
+            f'{canal_html}'
+        )
+
+    # Month filter bar
+    month_btns = ''
+    for mk, ml in zip(MONTH_KEYS, MONTH_LABELS):
+        active = 'background:#0f172a;color:white;border-color:#0f172a;' if mk == 'may' else 'background:white;color:#475569;border-color:#cbd5e1;'
+        month_btns += (
+            f'<button id="mbtn-{mk}" onclick="switchMonth(\'{mk}\')" '
+            f'style="{active}padding:5px 16px;border-radius:20px;border:1.5px solid;'
+            f'font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;">{ml}</button>'
+        )
+
+    filter_bar = (
+        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">'
+        f'<span style="font-size:11px;font-weight:700;color:#64748b;margin-right:4px;">Mes:</span>'
+        f'{month_btns}'
+        f'<span style="font-size:10px;color:#94a3b8;margin-left:8px;">Programas con ≥ 100 leads en mes seleccionado · ordenados por CR desc · expandir (+) para ver canales</span>'
+        f'</div>'
+    )
+
+    # Table header
+    table_header = (
+        f'<thead><tr style="background:#0f172a;position:sticky;top:0;z-index:3;">'
+        f'<th style="padding:8px 10px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:left;min-width:220px;">Programa</th>'
+        f'<th style="padding:8px 8px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:right;white-space:nowrap;">Leads</th>'
+        f'<th style="padding:8px 8px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:right;white-space:nowrap;">%Cont</th>'
+        f'<th style="padding:8px 8px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:right;white-space:nowrap;">%Ef</th>'
+        f'<th id="fi-cr-th" style="padding:8px 8px;font-size:9px;font-weight:700;color:white;text-transform:uppercase;text-align:right;white-space:nowrap;">CR%</th>'
+        f'<th style="padding:8px 8px;font-size:9px;color:#94a3b8;text-align:center;white-space:nowrap;"></th>'
+        f'</tr></thead>'
+    )
+
+    # JS for interactivity
+    month_keys_js   = str(MONTH_KEYS)
+    month_labels_js = str(MONTH_LABELS)
+
+    js = f"""
+<script>
+(function() {{
+  var currentMonth = 'may';
+  var MONTH_KEYS   = {month_keys_js};
+  var MONTH_LABELS = {month_labels_js};
+
+  function pcCol(v) {{
+    if (v < 50)  return '#dc2626';
+    if (v < 57)  return '#d97706';
+    return '#16a34a';
+  }}
+  function peCol(v) {{
+    if (v < 20)  return '#dc2626';
+    if (v < 27)  return '#d97706';
+    return '#16a34a';
+  }}
+  function crCol(v) {{
+    if (v < 1.0)  return '#dc2626';
+    if (v < 1.5)  return '#d97706';
+    return '#16a34a';
+  }}
+
+  window.switchMonth = function(m) {{
+    currentMonth = m;
+
+    // Update button styles
+    MONTH_KEYS.forEach(function(mk) {{
+      var btn = document.getElementById('mbtn-' + mk);
+      if (!btn) return;
+      if (mk === m) {{
+        btn.style.background = '#0f172a';
+        btn.style.color      = 'white';
+        btn.style.borderColor = '#0f172a';
+      }} else {{
+        btn.style.background = 'white';
+        btn.style.color      = '#475569';
+        btn.style.borderColor = '#cbd5e1';
+      }}
+    }});
+
+    // Collect prog rows with their CR for this month, then sort
+    var tbody = document.getElementById('fi-tbody');
+    var allRows = Array.from(tbody.querySelectorAll('tr.prog-row'));
+    var rowData = allRows.map(function(tr) {{
+      var leads = parseFloat(tr.getAttribute('data-' + m + '-leads') || 0);
+      var pc    = parseFloat(tr.getAttribute('data-' + m + '-pc')    || 0);
+      var pe    = parseFloat(tr.getAttribute('data-' + m + '-pe')    || 0);
+      var cr    = parseFloat(tr.getAttribute('data-' + m + '-cr')    || 0);
+      return {{ tr: tr, leads: leads, pc: pc, pe: pe, cr: cr }};
+    }});
+
+    // Hide rows with < 100 leads, sort rest by CR desc
+    var visible = rowData.filter(function(d) {{ return d.leads >= 100; }});
+    var hidden  = rowData.filter(function(d) {{ return d.leads < 100; }});
+    visible.sort(function(a, b) {{ return b.cr - a.cr; }});
+
+    // Re-order DOM: visible rows first, then hidden
+    var toOrder = visible.concat(hidden);
+    toOrder.forEach(function(d) {{
+      var progId = d.tr.getAttribute('data-prog-id');
+      // Move prog row
+      tbody.appendChild(d.tr);
+      // Move associated canal sub-rows right after prog row
+      var subRows = Array.from(tbody.querySelectorAll('tr.canal-sub-row[data-prog-id="' + progId + '"]'));
+      subRows.forEach(function(sr) {{ tbody.appendChild(sr); }});
+    }});
+
+    // Update visibility and cell values for prog rows
+    visible.forEach(function(d) {{
+      d.tr.style.display = '';
+      d.tr.querySelector('.p-leads').textContent = d.leads;
+      d.tr.querySelector('.p-pc').textContent    = d.pc.toFixed(0) + '%';
+      d.tr.querySelector('.p-pc').style.color    = pcCol(d.pc);
+      d.tr.querySelector('.p-pe').textContent    = d.pe.toFixed(0) + '%';
+      d.tr.querySelector('.p-pe').style.color    = peCol(d.pe);
+      d.tr.querySelector('.p-cr').textContent    = d.cr.toFixed(2) + '%';
+      d.tr.querySelector('.p-cr').style.color    = crCol(d.cr);
+    }});
+    hidden.forEach(function(d) {{
+      d.tr.style.display = 'none';
+      // Also hide their canal sub-rows
+      var progId = d.tr.getAttribute('data-prog-id');
+      var subRows = Array.from(tbody.querySelectorAll('tr.canal-sub-row[data-prog-id="' + progId + '"]'));
+      subRows.forEach(function(sr) {{ sr.style.display = 'none'; }});
+    }});
+
+    // Update canal sub-rows cell values for visible progs
+    var allCanal = Array.from(tbody.querySelectorAll('tr.canal-sub-row'));
+    allCanal.forEach(function(cr_tr) {{
+      var progId = cr_tr.getAttribute('data-prog-id');
+      // Only update if its prog-row is visible
+      var progRow = tbody.querySelector('tr.prog-row[data-prog-id="' + progId + '"]');
+      if (!progRow || progRow.style.display === 'none') return;
+      if (cr_tr.style.display === 'none') return;  // collapsed — update when expanded
+
+      var leads = parseFloat(cr_tr.getAttribute('data-' + m + '-leads') || 0);
+      var pc    = parseFloat(cr_tr.getAttribute('data-' + m + '-pc')    || 0);
+      var pe    = parseFloat(cr_tr.getAttribute('data-' + m + '-pe')    || 0);
+      var cr    = parseFloat(cr_tr.getAttribute('data-' + m + '-cr')    || 0);
+
+      if (leads < 30) {{
+        cr_tr.style.display = 'none';
+        return;
+      }}
+      cr_tr.querySelector('.c-leads').textContent = leads;
+      cr_tr.querySelector('.c-pc').textContent    = pc.toFixed(0) + '%';
+      cr_tr.querySelector('.c-pc').style.color    = pcCol(pc);
+      cr_tr.querySelector('.c-pe').textContent    = pe.toFixed(0) + '%';
+      cr_tr.querySelector('.c-pe').style.color    = peCol(pe);
+      cr_tr.querySelector('.c-cr').textContent    = cr.toFixed(2) + '%';
+      cr_tr.querySelector('.c-cr').style.color    = crCol(cr);
+    }});
+  }};
+
+  window.toggleProg = function(progId) {{
+    var btn     = document.getElementById('btn-' + progId);
+    var tbody   = document.getElementById('fi-tbody');
+    var subRows = Array.from(tbody.querySelectorAll('tr.canal-sub-row[data-prog-id="' + progId + '"]'));
+    var expanded = btn && btn.textContent === '-';
+
+    if (expanded) {{
+      subRows.forEach(function(sr) {{ sr.style.display = 'none'; }});
+      if (btn) btn.textContent = '+';
+    }} else {{
+      subRows.forEach(function(sr) {{
+        var leads = parseFloat(sr.getAttribute('data-' + currentMonth + '-leads') || 0);
+        if (leads < 30) {{ sr.style.display = 'none'; return; }}
+        // Update cells to current month
+        var pc = parseFloat(sr.getAttribute('data-' + currentMonth + '-pc') || 0);
+        var pe = parseFloat(sr.getAttribute('data-' + currentMonth + '-pe') || 0);
+        var cr = parseFloat(sr.getAttribute('data-' + currentMonth + '-cr') || 0);
+        sr.querySelector('.c-leads').textContent = leads;
+        sr.querySelector('.c-pc').textContent    = pc.toFixed(0) + '%';
+        sr.querySelector('.c-pc').style.color    = (pc < 50 ? '#dc2626' : pc < 57 ? '#d97706' : '#16a34a');
+        sr.querySelector('.c-pe').textContent    = pe.toFixed(0) + '%';
+        sr.querySelector('.c-pe').style.color    = (pe < 20 ? '#dc2626' : pe < 27 ? '#d97706' : '#16a34a');
+        sr.querySelector('.c-cr').textContent    = cr.toFixed(2) + '%';
+        sr.querySelector('.c-cr').style.color    = (cr < 1.0 ? '#dc2626' : cr < 1.5 ? '#d97706' : '#16a34a');
+        sr.style.display = '';
+      }});
+      if (btn) btn.textContent = '-';
+    }}
+  }};
+}})();
+</script>
+"""
+
+    table_html = (
+        f'<div style="overflow-x:auto;border-radius:10px;border:1px solid #e2e8f0;'
+        f'box-shadow:0 1px 4px rgba(0,0,0,.06);max-height:72vh;overflow-y:auto;">'
+        f'<table style="border-collapse:collapse;width:100%;font-family:inherit;">'
+        f'{table_header}'
+        f'<tbody id="fi-tbody">{prog_rows_html}</tbody>'
+        f'</table></div>'
+    )
+
+    return (
+        f'<div class="sec-hdr" style="margin-top:4px;">Funnel interactivo por programa '
+        f'<span>Todas las carreras · {n_progs} programas · {n_canales_total} canales expandibles</span></div>'
+        f'{filter_bar}'
+        f'{table_html}'
+        f'{js}'
+    )
+
+def _fi_pc_col(v):
+    if v < 50:  return '#dc2626'
+    if v < 57:  return '#d97706'
+    return '#16a34a'
+
+def _fi_pe_col(v):
+    if v < 20:  return '#dc2626'
+    if v < 27:  return '#d97706'
+    return '#16a34a'
+
+def _fi_cr_col(v):
+    if v < 1.0:  return '#dc2626'
+    if v < 1.5:  return '#d97706'
+    return '#16a34a'
+
+funnel_interactivo_html  = build_funnel_interactivo_html()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # BUILD ALL HTML SECTIONS
@@ -2402,8 +2573,9 @@ HTML = f"""<!DOCTYPE html>
 
 <!-- DIAGNÓSTICO -->
 <div class="tab" id="tab-diag">
-  <div class="sec-hdr">Diagnóstico de Funnel MX <span>¿Qué cambió y dónde rompe? · Marzo vs Mayo 2026 · por programa</span></div>
+  <div class="sec-hdr">Diagnóstico de Funnel MX <span>¿Qué cambió y dónde rompe? · Enero–Mayo 2026 · por programa</span></div>
   {diagnostico_html}
+  {funnel_interactivo_html}
   {diag_medio_html}
 </div>
 

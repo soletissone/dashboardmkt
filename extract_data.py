@@ -528,8 +528,12 @@ print(f'MX medios loaded: {len(medio_stats)}')
 
 # ── FUNNEL POR PROGRAMA (nuevo archivo data - 2026-06-01T215409.317.xlsx) ────
 def build_funnel_prog():
-    """Parse the per-program funnel file (Marzo/Abril/Mayo, cols 1-27).
-    Returns list of program dicts sorted by may_leads desc, plus overall MX totals.
+    """Parse the per-program funnel file (Marzo, Abril, Mayo — 3 months, 28 cols).
+    Col 0: PROGRAMA. Month blocks: Marzo=1-9, Abril=10-18, Mayo=19-27.
+    Per-block cols: LEADS, CONTACTO GENERAL, CONTACTO_UTIL_POS, REFERENCIAS, VENTAS,
+                    %CONTACTO LEAD, %CONTACTO EFECTO, %REFERENCIAS UTIL, %VENTAS REFERENCIAS
+    Returns dict with 'programs' list and 'totals' dict.
+    Min leads: any month >= 100.
     """
     try:
         fp_raw = pd.read_excel(FUNNEL_PROG_FILE, header=None)
@@ -537,9 +541,12 @@ def build_funnel_prog():
         print(f'AVISO: no se pudo leer FUNNEL_PROG_FILE: {e}')
         return {'programs': [], 'totals': {}}
 
-    # Month groups: Marzo cols 1-9, Abril 10-18, Mayo 19-27
-    # Row 1 (index 1): DESCRIPCION PROGRAMA | LEADS | CONTACTO GENERAL | CONTACTO_UTIL_POS | REFERENCIAS | VENTAS | %CONTACTO LEAD | %CONTACTO EFECTO | %REFERENCIAS UTIL | %VENTAS REFERENCIAS
-    MONTH_OFFSETS = [('Marzo', 1), ('Abril', 10), ('Mayo', 19)]
+    # Month offsets: (label, start_col) — file has only 3 months
+    MONTH_OFFSETS = [
+        ('mar', 1),
+        ('abr', 10),
+        ('may', 19),
+    ]
 
     def _to_f(val):
         try:
@@ -558,9 +565,9 @@ def build_funnel_prog():
             continue
 
         prog_name = fix(prog_raw)
-        data_by_month = {}
+        months = {}
 
-        for month_name, start_col in MONTH_OFFSETS:
+        for month_label, start_col in MONTH_OFFSETS:
             leads    = _to_f(row.iloc[start_col])
             contacto = _to_f(row.iloc[start_col + 1])
             util     = _to_f(row.iloc[start_col + 2])
@@ -571,21 +578,24 @@ def build_funnel_prog():
             pct_ef   = round(util / contacto * 100, 1) if contacto > 0 else 0.0
             cr       = round(ventas / leads * 100, 2) if leads > 0 else 0.0
 
-            data_by_month[month_name] = {
+            months[month_label] = {
                 'leads': int(leads), 'contacto': int(contacto),
                 'util': int(util), 'refs': int(refs), 'ventas': int(ventas),
                 'pct_cont': pct_cont, 'pct_ef': pct_ef, 'cr': cr
             }
 
-            # Accumulate totals (only rows with actual leads)
             if leads > 0:
-                month_totals[month_name]['leads']    += int(leads)
-                month_totals[month_name]['contacto'] += int(contacto)
-                month_totals[month_name]['util']     += int(util)
-                month_totals[month_name]['ventas']   += int(ventas)
+                month_totals[month_label]['leads']    += int(leads)
+                month_totals[month_label]['contacto'] += int(contacto)
+                month_totals[month_label]['util']     += int(util)
+                month_totals[month_label]['ventas']   += int(ventas)
 
-        mar = data_by_month['Marzo']
-        may = data_by_month['Mayo']
+        # Only include rows where at least one month has leads >= 100
+        if not any(months[m]['leads'] >= 100 for m in months):
+            continue
+
+        may = months['may']
+        mar = months['mar']
 
         may_leads    = may['leads']
         may_pct_cont = may['pct_cont']
@@ -611,8 +621,9 @@ def build_funnel_prog():
             'prog':         prog_name,
             'may_leads':    may_leads,
             'mar':          mar,
-            'abr':          data_by_month['Abril'],
+            'abr':          months['abr'],
             'may':          may,
+            'months':       months,
             'trend_pct_cont': trend_pct_cont,
             'trend_pct_ef':   trend_pct_ef,
             'trend_cr':       trend_cr,
@@ -623,24 +634,29 @@ def build_funnel_prog():
 
     # Compute overall totals with derived metrics
     totals = {}
-    for month_name, t in month_totals.items():
+    for month_label, t in month_totals.items():
         l = t['leads']; c = t['contacto']; u = t['util']; v = t['ventas']
-        totals[month_name] = {
+        totals[month_label] = {
             'leads':    l, 'contacto': c, 'util': u, 'ventas': v,
             'pct_cont': round(c / l * 100, 1) if l > 0 else 0.0,
             'pct_ef':   round(u / c * 100, 1) if c > 0 else 0.0,
             'cr':       round(v / l * 100, 2) if l > 0 else 0.0,
         }
+    # Back-compat keys used by existing diagnostico ¿Qué cambió? section
+    if 'mar' in totals: totals['Marzo'] = totals['mar']
+    if 'may' in totals: totals['Mayo']  = totals['may']
 
     print(f'funnel_prog: {len(programs)} programas cargados')
     return {'programs': programs, 'totals': totals}
 
 # ── FUNNEL POR PROGRAMA × MEDIO (nuevo archivo data - 2026-06-01T221257.291.xlsx) ─
 def build_funnel_prog_medio():
-    """Parse the per-program × medio funnel file.
-    Cols: 0=DESCRIPCIÓN PROGRAMA, 1=MEDIO, 2-10=Enero, 11-19=Feb, 20-28=Marzo, 29-37=Abril, 38-46=Mayo
+    """Parse the per-program × medio funnel file — all 5 months.
+    Cols: 0=DESCRIPCIÓN PROGRAMA, 1=MEDIO
+    Enero=2-10, Feb=11-19, Marzo=20-28, Abril=29-37, Mayo=38-46
     Each month block: LEADS, CONTACTO GENERAL, CONTACTO_UTIL_POS, REFERENCIAS, VENTAS,
                       %CONTACO LEAD, %CONTACO EFECTO, %REFERENCIAS UTIL, %VENTAS REFERENCIAS
+    Min leads filter: at least one month >= 30.
     """
     try:
         fp_raw = pd.read_excel(FUNNEL_PROG_MEDIO_FILE, header=None)
@@ -655,26 +671,29 @@ def build_funnel_prog_medio():
         except:
             return 0.0
 
-    # Column offsets for each month block (0-indexed from col 0)
-    # Enero=2-10, Feb=11-19, Marzo=20-28, Abril=29-37, Mayo=38-46
-    MAR_START = 20
-    MAY_START = 38
+    # Month offsets (col 0=PROG, col 1=MEDIO, months start at col 2)
+    MONTH_OFFSETS = [
+        ('ene', 2),
+        ('feb', 11),
+        ('mar', 20),
+        ('abr', 29),
+        ('may', 38),
+    ]
 
     results = []
 
     for row_i in range(2, len(fp_raw)):
         row = fp_raw.iloc[row_i]
 
-        prog_raw = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
+        prog_raw  = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
         medio_raw = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ''
 
-        # Skip rows where MEDIO='Total' (subtotals), or prog is bad, or medio is bad
         if not prog_raw or prog_raw in ('nan', '', 'NaN', 'Total', 'NO IDENTIFICADO'):
             continue
         if medio_raw in ('nan', '', 'NaN', 'Total'):
             continue
 
-        prog_name = fix(prog_raw)
+        prog_name  = fix(prog_raw)
         medio_name = fix(medio_raw)
 
         def _extract_month(start):
@@ -692,12 +711,16 @@ def build_funnel_prog_medio():
                 'pct_cont': pct_cont, 'pct_ef': pct_ef, 'cr': cr
             }
 
-        mar = _extract_month(MAR_START)
-        may = _extract_month(MAY_START)
+        months = {}
+        for month_label, start_col in MONTH_OFFSETS:
+            months[month_label] = _extract_month(start_col)
 
-        may_leads = may['leads']
-        if may_leads < 50:
+        # Skip if no month has >= 30 leads
+        if not any(months[m]['leads'] >= 30 for m in months):
             continue
+
+        may = months['may']
+        mar = months['mar']
 
         pct_cont = may['pct_cont']
         pct_ef   = may['pct_ef']
@@ -720,7 +743,9 @@ def build_funnel_prog_medio():
         results.append({
             'prog':        prog_name,
             'medio':       medio_name,
-            'may_leads':   may_leads,
+            'months':      months,
+            # Back-compat flat fields (used by existing diag_medio section)
+            'may_leads':   may['leads'],
             'may_cont':    may['contacto'],
             'may_util':    may['util'],
             'may_ventas':  may['ventas'],
