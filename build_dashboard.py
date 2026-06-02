@@ -1728,7 +1728,155 @@ def build_diagnostico_html():
         f'</div>'
     )
 
-    return s1
+    # ── Section 2: 4 buckets ─────────────────────────────────────────────────
+    bucket_contacto    = [p for p in FUNNEL_PROG if p.get('bottleneck') == 'contacto']
+    bucket_efectividad = [p for p in FUNNEL_PROG if p.get('bottleneck') == 'efectividad']
+    bucket_cierre      = [p for p in FUNNEL_PROG if p.get('bottleneck') == 'cierre']
+    bucket_escalar     = [p for p in FUNNEL_PROG if p.get('bottleneck') == 'escalar']
+
+    _total_leads_b = sum(p.get('may_leads', 0) for p in FUNNEL_PROG)
+    def pct_total(bucket):
+        s = sum(p.get('may_leads', 0) for p in bucket)
+        return round(s / _total_leads_b * 100) if _total_leads_b > 0 else 0
+
+    # Lookup: prog → list of medio rows (for worst-canal chip)
+    _prog_medios_b = {}
+    for r in FUNNEL_PROG_MEDIO:
+        pn = r['prog']
+        if pn not in _prog_medios_b: _prog_medios_b[pn] = []
+        _prog_medios_b[pn].append(r)
+
+    def _worst_canal(prog, metric):
+        rows = [r for r in _prog_medios_b.get(prog, [])
+                if r.get('months',{}).get('may',{}).get('leads', r.get('may_leads',0)) >= 50]
+        if not rows: return None, None
+        w = min(rows, key=lambda r: r.get('months',{}).get('may',{}).get(metric, r.get(metric, 100)))
+        val = w.get('months',{}).get('may',{}).get(metric, w.get(metric, 0))
+        return w['medio'], val
+
+    def canal_chip_b(canal, value, fmt='pct'):
+        if not canal: return ''
+        val_str = f'{value:.0f}%' if fmt == 'pct' else f'{value:.2f}%'
+        return (f'<span style="background:#fee2e2;color:#dc2626;padding:1px 6px;border-radius:8px;'
+                f'font-size:9px;font-weight:700;white-space:nowrap;margin-left:4px;">'
+                f'↓{canal}: {val_str}</span>')
+
+    def mini_funnel_b(pc, pe, cr, delta, lbl='Δ'):
+        def fc(v, lo, hi): return '#16a34a' if v >= hi else ('#d97706' if v >= lo else '#dc2626')
+        cc=fc(pc,50,57); ec=fc(pe,20,27); rc=fc(cr,1.0,1.5)
+        sign='+' if delta>=0 else ''; dc='#16a34a' if delta>=0 else '#dc2626'
+        return (f'<div style="display:flex;align-items:center;gap:4px;font-size:10px;white-space:nowrap;">'
+                f'<span style="color:{cc};font-weight:800;">{pc:.0f}%</span>'
+                f'<span style="color:#cbd5e1;">→</span>'
+                f'<span style="color:{ec};font-weight:800;">{pe:.0f}%</span>'
+                f'<span style="color:#cbd5e1;">→</span>'
+                f'<span style="color:{rc};font-weight:800;">{cr:.2f}%</span>'
+                f'<span style="color:{dc};font-weight:600;font-size:9px;margin-left:4px;">{sign}{delta:.1f}pp</span>'
+                f'</div>')
+
+    def medio_funnel_sub(prog):
+        medios = sorted([r for r in _prog_medios_b.get(prog, [])
+                         if r.get('months',{}).get('may',{}).get('leads', r.get('may_leads',0)) >= 50],
+                        key=lambda r: -r.get('months',{}).get('may',{}).get('leads', r.get('may_leads',0)))[:5]
+        if not medios: return ''
+        html = ''
+        for r in medios:
+            m = r.get('months',{}).get('may',{})
+            ml=m.get('leads', r.get('may_leads',0))
+            pc=m.get('pct_cont', r.get('pct_cont',0))
+            pe=m.get('pct_ef',   r.get('pct_ef',0))
+            cr=m.get('cr',       r.get('cr',0))
+            def fc(v,lo,hi): return '#16a34a' if v>=hi else ('#d97706' if v>=lo else '#dc2626')
+            html += (f'<div style="display:flex;align-items:center;gap:6px;padding:3px 10px 3px 22px;'
+                     f'background:#f8fafc;border-bottom:1px solid #f1f5f9;font-size:10px;">'
+                     f'<div style="color:#64748b;font-weight:600;min-width:90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{r["medio"]}</div>'
+                     f'<div style="color:#94a3b8;white-space:nowrap;">{fmt_k(ml)} L</div>'
+                     f'<div style="display:flex;align-items:center;gap:3px;white-space:nowrap;">'
+                     f'<span style="color:{fc(pc,50,57)};font-weight:700;">{pc:.0f}%</span>'
+                     f'<span style="color:#e2e8f0;">→</span>'
+                     f'<span style="color:{fc(pe,20,27)};font-weight:700;">{pe:.0f}%</span>'
+                     f'<span style="color:#e2e8f0;">→</span>'
+                     f'<span style="color:{fc(cr,1.0,1.5)};font-weight:700;">{cr:.2f}%</span>'
+                     f'</div></div>')
+        return html
+
+    def prog_bucket_row(p, metric, delta_key, color):
+        delta = p.get(delta_key, p.get('trend_' + metric.replace('pct_',''), 0))
+        may   = p.get('may', {})
+        pc    = may.get('pct_cont', 0); pe = may.get('pct_ef', 0); cr = may.get('cr', 0)
+        canal, val = _worst_canal(p['prog'], metric)
+        fmt   = 'cr' if metric == 'cr' else 'pct'
+        return (f'<div style="border-bottom:1px solid rgba(0,0,0,.07);">'
+                f'<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:11px;">'
+                f'<div style="flex:1;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
+                f'title="{p["prog"]}">{shorten(p["prog"],30)}{canal_chip_b(canal, val, fmt)}</div>'
+                f'<div style="color:#64748b;white-space:nowrap;font-size:10px;">{fmt_k(p.get("may_leads",0))} leads</div>'
+                f'{mini_funnel_b(pc, pe, cr, delta)}'
+                f'</div>'
+                f'{medio_funnel_sub(p["prog"])}'
+                f'</div>')
+
+    def bucket_rows(progs, metric, delta_key, color, limit=8):
+        if not progs:
+            return '<div style="color:#94a3b8;font-size:10px;padding:8px;">Sin programas en este cuadrante.</div>'
+        return ''.join(prog_bucket_row(p, metric, delta_key, color) for p in progs[:limit])
+
+    col_hdr_b = (
+        '<div style="display:flex;gap:8px;padding:4px 10px;background:rgba(0,0,0,.06);'
+        'font-size:9px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;">'
+        '<div style="flex:1;">Programa · <span style="font-weight:400;opacity:.8;">↓canal peor</span></div>'
+        '<div style="white-space:nowrap;">Leads</div>'
+        '<div style="white-space:nowrap;">%Cont→%Ef→CR · Δ</div>'
+        '</div>'
+    )
+
+    def bucket_card(icon, title, subtitle, desc, color, bg_card, progs_html, n_progs, pct_tot):
+        return (
+            f'<div style="background:white;border-radius:12px;border:2px solid {color};overflow:hidden;">'
+            f'<div style="background:{color};padding:10px 14px;">'
+            f'<div style="display:flex;align-items:baseline;gap:10px;">'
+            f'<div style="color:white;font-size:13px;font-weight:800;">{icon} {title}</div>'
+            f'<div style="color:rgba(255,255,255,.95);font-size:18px;font-weight:900;">{pct_tot}%</div>'
+            f'<div style="color:rgba(255,255,255,.7);font-size:10px;">del total · {n_progs} prog</div>'
+            f'</div>'
+            f'<div style="color:rgba(255,255,255,.85);font-size:10px;margin-top:2px;">{subtitle}</div>'
+            f'</div>'
+            f'{col_hdr_b}'
+            f'<div style="background:{bg_card};">{progs_html}</div>'
+            f'<div style="padding:6px 10px;background:{bg_card};border-top:1px solid {color}22;">'
+            f'<span style="font-size:10px;color:#64748b;">{desc}</span></div>'
+            f'</div>'
+        )
+
+    b1 = bucket_card('🔴','CONTACTO BAJO','%Contacto < 50% en Mayo',
+                     'El equipo no llega a estos leads. Revisar asignación y CRM.',
+                     '#dc2626','#fff8f8',
+                     bucket_rows(bucket_contacto,'pct_cont','trend_pct_cont','#dc2626'),
+                     len(bucket_contacto), pct_total(bucket_contacto))
+    b2 = bucket_card('🟠','EFECTIVIDAD BAJA','%Cont ≥ 50% pero %Ef < 20%',
+                     'Se llama pero no convence. Revisar pitch y calidad del lead.',
+                     '#ea580c','#fff7ed',
+                     bucket_rows(bucket_efectividad,'pct_ef','trend_pct_ef','#ea580c'),
+                     len(bucket_efectividad), pct_total(bucket_efectividad))
+    b3 = bucket_card('🟡','CIERRE BAJO','%Cont ≥ 50%, %Ef ≥ 20%, CR < 1.2%',
+                     'Lead interesado pero no cierra. Revisar seguimiento y propuesta.',
+                     '#d97706','#fffbeb',
+                     bucket_rows(bucket_cierre,'cr','trend_cr','#d97706'),
+                     len(bucket_cierre), pct_total(bucket_cierre))
+    b4 = bucket_card('🟢','ESCALAR','%Cont ≥ 50%, %Ef ≥ 20%, CR ≥ 1.2%',
+                     'Funnel sano — necesitan más leads para crecer.',
+                     '#16a34a','#f0fdf4',
+                     bucket_rows(bucket_escalar,'cr','trend_cr','#16a34a'),
+                     len(bucket_escalar), pct_total(bucket_escalar))
+
+    s2 = (
+        f'<div class="sec-hdr">¿Dónde rompe el funnel? <span>Por programa · Mayo 2026 · % del total de leads · expandido por canal</span></div>'
+        f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;">'
+        f'{b1}{b2}{b3}{b4}'
+        f'</div>'
+    )
+
+    return s1 + s2
 
 # ── Diagnóstico por Programa × Medio ──────────────────────────────────────────
 def build_diag_medio_html():
