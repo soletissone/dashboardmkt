@@ -19,6 +19,19 @@ MEDIO           = D['medio_stats']
 CANAL_TREND_MX  = D.get('canal_trend_mx', {})
 MAY_F           = D['may_factor']
 MAY_D           = D['may_days']
+CUR_MONTH_LABEL = D.get('cur_month', 'may 2026').capitalize()   # e.g. "Jun 2026"
+CUR_DAYS        = D.get('cur_days', MAY_D)
+
+# Build human-readable date string for subtitles
+_cm = D.get('cur_month', 'may 2026')
+_cd = D.get('cur_days', MAY_D)
+_MONTH_ES = {'ene':'Ene','feb':'Feb','mar':'Mar','abr':'Abr','may':'May',
+             'jun':'Jun','jul':'Jul','ago':'Ago','sep':'Sep','oct':'Oct','nov':'Nov','dic':'Dic'}
+_m_abbr  = _cm[:3].lower()
+_m_label = _MONTH_ES.get(_m_abbr, _m_abbr.capitalize())
+_m_year  = _cm[-4:]
+FECHA_DATOS = (f'{_m_label} {_m_year} · {_cd} días reales' if _cd < 28
+               else f'{_m_label} {_m_year} completo')  # e.g. "Jun 2026 · 3 días reales"
 INV_CANAL       = D.get('inv_canal', [])
 _FP             = D.get('funnel_prog', {'programs': [], 'totals': {}})
 FUNNEL_PROG     = _FP.get('programs', [])
@@ -201,8 +214,8 @@ def kpi_row(trend, prog_list, label):
     diff_str  = (f'+{diff_cr}pp vs Abr' if diff_cr >= 0 else f'{diff_cr}pp vs Abr')
     trend_cls = 'g' if may['cr'] >= abr['cr'] else 'r'
     return f'''<div class="kpi-row" id="kpis-{label}">
-  <div class="kpi b"><div class="lbl">Leads Mayo ({MAY_D}d reales)</div><div class="val">{fmt_k(may["leads"])}</div><div class="sub">Abr: {fmt_k(abr["leads"])}</div></div>
-  <div class="kpi n"><div class="lbl">Mats Mayo ({MAY_D}d reales)</div><div class="val">{fmt_k(may["mats"])}</div><div class="sub">Abr: {fmt_k(abr["mats"])}</div></div>
+  <div class="kpi b"><div class="lbl">Leads {_m_label} ({_cd}d reales)</div><div class="val">{fmt_k(may["leads"])}</div><div class="sub">Abr: {fmt_k(abr["leads"])}</div></div>
+  <div class="kpi n"><div class="lbl">Mats {_m_label} ({_cd}d reales)</div><div class="val">{fmt_k(may["mats"])}</div><div class="sub">Abr: {fmt_k(abr["mats"])}</div></div>
   <div class="kpi {g(may["cr"])}"><div class="lbl">CR Mayo (real)</div><div class="val">{fmt_cr(may["cr"])}%</div><div class="sub">Prom progs: {fmt_cr(ac)}%</div></div>
   <div class="kpi {trend_cls}"><div class="lbl">Tendencia CR</div><div class="val">{"↑ Sube" if may["cr"] >= abr["cr"] else "↓ Baja"}</div><div class="sub">{diff_str}</div></div>
 </div>'''
@@ -2842,8 +2855,8 @@ HTML = f"""<!DOCTYPE html>
 
 <div class="hero">
   <div>
-    <h1>Dashboard de Conversion Ene-May* 2026</h1>
-    <div class="sub">Sin Diplomados · Datos al {MAY_D}/05/2026 · CR Abr = real · May* = proyectado · Filtrar por pais arriba</div>
+    <h1>Dashboard de Conversion 2026</h1>
+    <div class="sub">Sin Diplomados · Datos al {FECHA_DATOS} · Sin proyección · Filtrar por pais arriba</div>
   </div>
   <div class="badges">
     <span class="badge badge-g">MX May*: {fmt_cr(may_mx_cr)}%</span>
@@ -2915,7 +2928,7 @@ HTML = f"""<!DOCTYPE html>
 
 </div>
 <div style="text-align:center;font-size:10px;color:#94a3b8;padding:14px;border-top:1px solid #e2e8f0;margin-top:20px;">
-Sin Diplomados · May* = {MAY_D} dias x {MAY_F:.1f}x · Datos al {MAY_D}/05/2026 · Contactacion solo MX
+Sin Diplomados · Datos reales sin proyección · {FECHA_DATOS} · Contactación solo MX
 </div>
 <script>{JS}</script>
 </body>

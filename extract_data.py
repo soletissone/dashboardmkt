@@ -18,12 +18,14 @@ def norm_prog(s):
     return s.strip()
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-NEW_FILE    = r'C:\Users\USUARIO\Downloads\data - 2026-06-01T211234.164.xlsx'
-MATS_FILE   = r'C:\Users\USUARIO\Downloads\data - 2026-06-01T211234.164.xlsx'
-FUNNEL_FILE = r'C:\Users\USUARIO\Downloads\CUADRO EVOLUTIVO (6).xlsx'
+CUR_MONTH      = 'jun 2026'   # mes actual auto-detectado
+CUR_DAYS_DONE  = 3            # días reales del mes actual
+NEW_FILE    = r'C:\Users\USUARIO\Downloads\data - 2026-06-04T131948.317.xlsx'
+MATS_FILE   = r'C:\Users\USUARIO\Downloads\data - 2026-06-04T131948.317.xlsx'
+FUNNEL_FILE = r'C:\Users\USUARIO\Downloads\CUADRO EVOLUTIVO (7).xlsx'
 PRECIO_FILE = r'C:\Users\USUARIO\Downloads\TABLA_PRECIOS_2026_ABRIL_COMPLETA (15).xlsx'
-RESUMEN_FILE = r'C:\Users\USUARIO\Downloads\RESUMEN (2).xlsx'
-FUNNEL_PROG_FILE = r'C:\Users\USUARIO\Downloads\data - 2026-06-01T215409.317.xlsx'
+RESUMEN_FILE = r'C:\Users\USUARIO\Downloads\RESUMEN (3).xlsx'
+FUNNEL_PROG_FILE = r'C:\Users\USUARIO\Downloads\data - 2026-06-04T131713.109.xlsx'
 FUNNEL_PROG_MEDIO_FILE = r'C:\Users\USUARIO\Downloads\data - 2026-06-01T221257.291.xlsx'
 
 # ── LOAD PRICING REFERENCE ────────────────────────────────────────────────────
@@ -64,10 +66,10 @@ if _mats_same_as_leads:
     # Mode B: leads file used as mats source — extract from main dataframe
     # Find column indices for DESCRIPCIÓN PROGRAMA and may 2026 MATRÍCULAS
     _prog_col_idx = next((i for i, c in enumerate(_r1) if 'PROGRAMA' in c), None)
-    # Find may 2026 MATRÍCULAS column: row0 has 'may 2026', row1 has 'MATR'
+    # Find current month MATRÍCULAS column: row0 has CUR_MONTH, row1 has 'MATR'
     _may_mat_idx = None
     for i, (m, met) in enumerate(zip(_r0, _r1)):
-        if 'may 2026' in m and 'MATR' in met:
+        if CUR_MONTH.lower() in m and 'MATR' in met:
             _may_mat_idx = i
             break
     if _prog_col_idx is not None and _may_mat_idx is not None:
@@ -95,7 +97,7 @@ else:
     _mdf = _mats_raw.iloc[2:].copy(); _mdf.columns = _mats_cols
     _mdf['PROGRAMA'] = _mdf['PROGRAMA'].apply(fix).str.strip()
     _mdf = _mdf[~_mdf['PROGRAMA'].isin(['nan','','Total','NaN'])]
-    _may_mat_col = next((c for c in _mats_cols if 'may 2026' in c.lower()), None)
+    _may_mat_col = next((c for c in _mats_cols if CUR_MONTH.lower() in c.lower()), None)
     if _may_mat_col:
         _mdf[_may_mat_col] = pd.to_numeric(_mdf[_may_mat_col], errors='coerce').fillna(0)
         for _, row in _mdf.iterrows():
@@ -134,7 +136,7 @@ def _get_pricing(nk):
 
 MAY_DAYS_DONE  = 31   # auto-detectado del nombre del archivo
 MAY_DAYS_TOTAL = 31
-MAY_FACTOR     = MAY_DAYS_TOTAL / MAY_DAYS_DONE
+MAY_FACTOR     = 1.0  # NUNCA proyectar — mostrar solo datos reales
 
 # ── PARSE NEW FILE ────────────────────────────────────────────────────────────
 raw = pd.read_excel(NEW_FILE, header=None)
@@ -203,8 +205,19 @@ for c in cols:
 
 MONTHS_2026 = [m for m in month_labels_all if '2026' in m]
 MONTHS_2025 = [m for m in month_labels_all if '2025' in m]  # full 2025
-MONTHS_SHOW = MONTHS_2026   # ene 2026 ... may 2026
-MONTHS_LABELS      = ['Ene','Feb','Mar','Abr','May*']
+MONTHS_SHOW = MONTHS_2026   # ene 2026 ... mes actual
+
+# Build labels dynamically — last month shows real days if incomplete
+_month_abbr = {'ene':'Ene','feb':'Feb','mar':'Mar','abr':'Abr','may':'May',
+               'jun':'Jun','jul':'Jul','ago':'Ago','sep':'Sep','oct':'Oct','nov':'Nov','dic':'Dic'}
+MONTHS_LABELS = []
+for _m in MONTHS_SHOW:
+    _abbr = _m[:3].lower()
+    _lbl  = _month_abbr.get(_abbr, _abbr.capitalize())
+    if _m == CUR_MONTH and CUR_DAYS_DONE < 28:
+        _lbl += f' ({CUR_DAYS_DONE}d)'   # e.g. "Jun (10d)"
+    MONTHS_LABELS.append(_lbl)
+
 MONTHS_LABELS_2025 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 
 def get_col(month, metric):
@@ -880,6 +893,8 @@ payload = {
     'trend_all_2025': trend_all_2025,
     'may_factor':   round(MAY_FACTOR,2),
     'may_days':     MAY_DAYS_DONE,
+    'cur_month':    CUR_MONTH,
+    'cur_days':     CUR_DAYS_DONE,
     'inv_canal':    inv_canal,
     'funnel_prog':       build_funnel_prog(),
     'funnel_prog_medio': build_funnel_prog_medio(),
