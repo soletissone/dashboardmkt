@@ -456,46 +456,102 @@ def combo_bar_line_chart(programs, key_leads, key_cr, title='', W=860, H=270):
 
 
 def build_nuevos_section(prog_list):
-    """Highlighted panel for new programs launched in 2026 — with combo chart."""
+    """Nuevos programas con filtro por mes."""
     nuevos = [p for p in prog_list if p.get('is_new')]
     if not nuevos:
         return ''
 
-    chart_svg = combo_bar_line_chart(
-        nuevos, key_leads='real_may_l', key_cr='may_cr',
-        title=f'Nuevos programas 2026 — {_m_label} real ({_cd} días) · barras = leads · línea = CR% · sin proyección',
-        W=860, H=280
-    )
+    n_months = len(D.get('months', []))  # total months in data
 
-    rows = ''
-    for p in sorted(nuevos, key=lambda x: -x['may_cr']):
-        may_cr  = p.get('may_cr', 0)
-        cr_c    = '#16a34a' if may_cr >= 2 else '#d97706' if may_cr >= 1 else '#dc2626'
-        tier    = p.get('pricing','')
-        tier_html = (f'<span style="background:#1e40af;color:white;font-size:8px;font-weight:700;'
-                     f'padding:1px 6px;border-radius:8px;margin-left:4px;">{tier}</span>') if tier else ''
-        cr_str   = f'{fmt_cr(may_cr)}%' if may_cr > 0 else '—'
-        rl_str   = fmt_k(p['real_may_l'])
-        rm_str   = str(int(p['real_may_m']))
-        rows += (
-            f'<div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid rgba(124,58,237,.08);gap:10px;">'
-            f'<div style="flex:1;font-size:11px;font-weight:600;color:#1e293b;">{p["prog"]}</div>'
-            f'{tier_html}'
-            f'<div style="font-size:10px;color:#94a3b8;white-space:nowrap;">{rl_str} leads</div>'
-            f'<div style="font-size:10px;color:#475569;white-space:nowrap;margin-left:6px;">{rm_str} mats</div>'
-            f'<div style="font-size:14px;font-weight:800;color:{cr_c};white-space:nowrap;margin-left:8px;min-width:50px;text-align:right;">{cr_str}</div>'
-            f'</div>'
+    def _view(label, leads_key, mats_key, cr_key, min_l=1):
+        """Generate chart + rows for a given month view."""
+        # Add temp fields to programs
+        view_list = []
+        for p in nuevos:
+            l = p.get(leads_key, 0) if isinstance(leads_key, str) else leads_key(p)
+            m = p.get(mats_key, 0) if isinstance(mats_key, str) else mats_key(p)
+            cr = round(m/l*100, 2) if l > 0 else 0
+            if l >= min_l:
+                view_list.append({**p, '_vl': l, '_vm': m, '_vcr': cr})
+        view_list.sort(key=lambda x: -x['_vcr'])
+        if not view_list:
+            return f'<div style="padding:14px;color:#94a3b8;font-size:11px;">Sin datos para {label}.</div>'
+
+        # Inject tmp keys for chart function
+        for p in view_list:
+            p['_tmp_l'] = p['_vl']; p['_tmp_cr'] = p['_vcr']
+
+        svg = combo_bar_line_chart(
+            view_list, key_leads='_tmp_l', key_cr='_tmp_cr',
+            title=f'Nuevos programas — {label} · barras=leads · línea=CR%',
+            W=860, H=260
         )
+        rows = ''
+        for p in view_list:
+            cr_c = '#16a34a' if p['_vcr'] >= 2 else '#d97706' if p['_vcr'] >= 1 else '#dc2626'
+            tier = p.get('pricing','')
+            tier_html = (f'<span style="background:#1e40af;color:white;font-size:8px;font-weight:700;'
+                         f'padding:1px 6px;border-radius:8px;margin-left:4px;">{tier}</span>') if tier else ''
+            cr_str = f'{fmt_cr(p["_vcr"])}%' if p['_vcr'] > 0 else '—'
+            rows += (
+                f'<div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid rgba(124,58,237,.08);gap:10px;">'
+                f'<div style="flex:1;font-size:11px;font-weight:600;color:#1e293b;">{p["prog"]}</div>'
+                f'{tier_html}'
+                f'<div style="font-size:10px;color:#94a3b8;white-space:nowrap;">{fmt_k(p["_vl"])} leads</div>'
+                f'<div style="font-size:10px;color:#475569;white-space:nowrap;margin-left:6px;">{int(p["_vm"])} mats</div>'
+                f'<div style="font-size:14px;font-weight:800;color:{cr_c};white-space:nowrap;margin-left:8px;min-width:50px;text-align:right;">{cr_str}</div>'
+                f'</div>'
+            )
+        return f'<div style="padding:14px 14px 4px;">{svg}</div><div style="display:grid;grid-template-columns:1fr 1fr;border-top:1px solid rgba(124,58,237,.15);margin-top:8px;">{rows}</div>'
+
+    # Build views: Acum + each month in MONTHS_SHOW
+    months_show = D.get('months', [])
+    views = {}
+
+    # Acum: sum all months
+    def _acum_l(p): return sum(p.get('leads', []) or [p.get('real_may_l',0)])
+    def _acum_m(p): return sum(p.get('mats',  []) or [p.get('real_may_m',0)])
+    views['acum'] = ('Acum Ene-' + (months_show[-1] if months_show else _m_label),
+                     _view('Acumulado', _acum_l, _acum_m, None, min_l=1))
+
+    # Per-month views
+    for i, mlbl in enumerate(months_show):
+        def _ml(p, idx=i): return (p.get('leads') or [])[idx] if len(p.get('leads') or []) > idx else 0
+        def _mm(p, idx=i): return (p.get('mats')  or [])[idx] if len(p.get('mats')  or []) > idx else 0
+        views[f'm{i}'] = (mlbl, _view(mlbl, _ml, _mm, None, min_l=1))
+
+    # Tabs JS id
+    uid = 'np'
+    first = True
+    btn_html = ''
+    content_html = ''
+    for key, (lbl, html) in views.items():
+        active_btn = 'background:#7c3aed;color:white;' if first else 'background:rgba(255,255,255,.15);color:rgba(255,255,255,.8);'
+        disp = 'block' if first else 'none'
+        btn_html += (f'<button onclick="npTab(\'{uid}\',\'{key}\')" id="{uid}-btn-{key}" '
+                     f'style="{active_btn}border:none;border-radius:16px;padding:4px 12px;'
+                     f'font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;">{lbl}</button>')
+        content_html += f'<div id="{uid}-tab-{key}" style="display:{disp};">{html}</div>'
+        first = False
+
+    js = (f'<script>function npTab(uid,k){{'
+          f'document.querySelectorAll("[id^=\'"+uid+"-tab-\']").forEach(function(d){{d.style.display="none";}});'
+          f'document.querySelectorAll("[id^=\'"+uid+"-btn-\']").forEach(function(b){{'
+          f'b.style.background="rgba(255,255,255,.15)";b.style.color="rgba(255,255,255,.8)";}});'
+          f'document.getElementById(uid+"-tab-"+k).style.display="block";'
+          f'document.getElementById(uid+"-btn-"+k).style.background="#7c3aed";'
+          f'document.getElementById(uid+"-btn-"+k).style.color="white";}}</script>')
 
     return (
         f'<div style="background:linear-gradient(135deg,#faf5ff 0%,#f3e8ff 100%);'
         f'border-radius:12px;border:2px solid #c4b5fd;margin-bottom:20px;overflow:hidden;">'
-        f'<div style="background:#7c3aed;padding:10px 16px;display:flex;align-items:center;gap:10px;">'
+        f'<div style="background:#7c3aed;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
         f'<span style="color:white;font-size:13px;font-weight:800;">✨ Nuevos Programas 2026</span>'
-        f'<span style="color:rgba(255,255,255,.8);font-size:10px;">{len(nuevos)} programas · {_m_label} real {_cd} días · sin proyección</span>'
+        f'<span style="color:rgba(255,255,255,.7);font-size:10px;">{len(nuevos)} programas · sin proyección</span>'
+        f'<div style="margin-left:auto;display:flex;gap:6px;">{btn_html}</div>'
         f'</div>'
-        f'<div style="padding:14px 14px 4px;">{chart_svg}</div>'
-        f'<div style="display:grid;grid-template-columns:1fr 1fr;border-top:1px solid rgba(124,58,237,.15);margin-top:8px;">{rows}</div>'
+        f'{content_html}'
+        f'{js}'
         f'</div>'
     )
 
