@@ -3,6 +3,10 @@ dashboard_data.json
 *.xlsx
 *.xls
 
+# Credenciales — NUNCA subir
+pbi_config.py
+*.credentials
+
 # Python cache
 __pycache__/
 *.pyc
