@@ -202,7 +202,7 @@ def bar_chart(trend_list, key, label, color, unit='', W=330, H=100):
         bars += f'<rect x="{x}" y="{H-28-bh}" width="{bw}" height="{bh}" rx="4" fill="{fill_}" {st} opacity="{op}"/>'
         bars += f'<text x="{x+bw//2}" y="{H-30-bh}" font-size="8" fill="{color}" text-anchor="middle" font-weight="700">{fmt_k(v)}{unit}</text>'
         mc = "#38bdf8" if ip else "#64748b"
-        bars += f'<text x="{x+bw//2}" y="{H-10}" font-size="9" fill="{mc}" text-anchor="middle">{"May*" if ip else g["mes"]}</text>'
+        bars += f'<text x="{x+bw//2}" y="{H-10}" font-size="9" fill="{mc}" text-anchor="middle">{_m_label if ip else g["mes"]}</text>'
     return f'<div class="chart-card"><div class="ch-title">{label}</div><svg width="{W}" height="{H}" viewBox="0 0 {W} {H}">{bars}</svg></div>'
 
 # ── KPI row ────────────────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ def kpi_row(trend, prog_list, label):
     return f'''<div class="kpi-row" id="kpis-{label}">
   <div class="kpi b"><div class="lbl">Leads {_m_label} ({_cd}d reales)</div><div class="val">{fmt_k(may["leads"])}</div><div class="sub">Abr: {fmt_k(abr["leads"])}</div></div>
   <div class="kpi n"><div class="lbl">Mats {_m_label} ({_cd}d reales)</div><div class="val">{fmt_k(may["mats"])}</div><div class="sub">Abr: {fmt_k(abr["mats"])}</div></div>
-  <div class="kpi {g(may["cr"])}"><div class="lbl">CR Mayo (real)</div><div class="val">{fmt_cr(may["cr"])}%</div><div class="sub">Prom progs: {fmt_cr(ac)}%</div></div>
+  <div class="kpi {g(may["cr"])}"><div class="lbl">CR {_m_label} (real)</div><div class="val">{fmt_cr(may["cr"])}%</div><div class="sub">Prom progs: {fmt_cr(ac)}%</div></div>
   <div class="kpi {trend_cls}"><div class="lbl">Tendencia CR</div><div class="val">{"↑ Sube" if may["cr"] >= abr["cr"] else "↓ Baja"}</div><div class="sub">{diff_str}</div></div>
 </div>'''
 
@@ -337,7 +337,7 @@ def build_vol_drop_section(prog_list, threshold=25):
         f'<div style="font-size:9px;font-weight:700;color:#475569;text-align:right;">Abr 2026</div>'
         f'<div style="font-size:9px;font-weight:700;color:#475569;">Variación YoY</div>'
         f'<div style="font-size:9px;font-weight:700;color:#475569;text-align:right;">Leads ±</div>'
-        f'<div style="font-size:9px;font-weight:700;color:#475569;text-align:right;">CR Mayo</div>'
+        f'<div style="font-size:9px;font-weight:700;color:#475569;text-align:right;">CR {_m_label}</div>'
         f'</div>'
     )
 
@@ -463,7 +463,7 @@ def build_nuevos_section(prog_list):
 
     chart_svg = combo_bar_line_chart(
         nuevos, key_leads='real_may_l', key_cr='may_cr',
-        title=f'Nuevos programas 2026 — Mayo real ({MAY_D} días) · barras = leads · línea = CR% · sin proyección',
+        title=f'Nuevos programas 2026 — {_m_label} real ({_cd} días) · barras = leads · línea = CR% · sin proyección',
         W=860, H=280
     )
 
@@ -492,7 +492,7 @@ def build_nuevos_section(prog_list):
         f'border-radius:12px;border:2px solid #c4b5fd;margin-bottom:20px;overflow:hidden;">'
         f'<div style="background:#7c3aed;padding:10px 16px;display:flex;align-items:center;gap:10px;">'
         f'<span style="color:white;font-size:13px;font-weight:800;">✨ Nuevos Programas 2026</span>'
-        f'<span style="color:rgba(255,255,255,.8);font-size:10px;">{len(nuevos)} programas · Mayo real {MAY_D} días · sin proyección</span>'
+        f'<span style="color:rgba(255,255,255,.8);font-size:10px;">{len(nuevos)} programas · {_m_label} real {_cd} días · sin proyección</span>'
         f'</div>'
         f'<div style="padding:14px 14px 4px;">{chart_svg}</div>'
         f'<div style="display:grid;grid-template-columns:1fr 1fr;border-top:1px solid rgba(124,58,237,.15);margin-top:8px;">{rows}</div>'
@@ -640,7 +640,7 @@ def canal_recommendations_html(canal_dict):
         elif canal_cr >= 1.5: hcol = '#d97706'; hbg = '#fffbeb'
         else:                 hcol = '#dc2626'; hbg = '#fef2f2'
 
-        period_lbl = f'Mayo {MAY_D}d' if use_may else 'Acum.'
+        period_lbl = f'{_m_label} {_cd}d' if use_may else 'Acum.'
         techo_badge = ('<span style="font-size:9px;background:#e0e7ff;color:#3730a3;'
                        'padding:2px 7px;border-radius:8px;font-weight:700;">VOLUMEN LIMITADO</span>'
                        if canal_techo else '')
@@ -648,7 +648,7 @@ def canal_recommendations_html(canal_dict):
             f'<div style="background:{hbg};border-bottom:2px solid {hcol};'
             f'padding:9px 14px;display:flex;align-items:center;gap:10px;">'
             f'<div style="font-size:13px;font-weight:800;color:#0f172a;flex:1;">{canal}</div>'
-            f'<div style="font-size:11px;font-weight:700;color:{hcol};">CR Mayo {fmt_cr(canal_cr)}%</div>'
+            f'<div style="font-size:11px;font-weight:700;color:{hcol};">CR {_m_label} {fmt_cr(canal_cr)}%</div>'
             f'<div style="font-size:10px;color:#64748b;">{fmt_k(total_leads)} leads {period_lbl}</div>'
             f'{techo_badge}</div>'
         )
@@ -657,9 +657,9 @@ def canal_recommendations_html(canal_dict):
             '<div style="display:grid;grid-template-columns:1fr 120px 50px 56px 72px;'
             'padding:4px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">'
             '<div style="font-size:8px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;">Programa</div>'
-            '<div style="font-size:8px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;text-align:center;">% del canal (Mayo)</div>'
+            '<div style="font-size:8px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;text-align:center;">% del canal ({_m_label})</div>'
             '<div style="font-size:8px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;text-align:right;">CR Acum</div>'
-            '<div style="font-size:8px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;text-align:right;">CR Mayo</div>'
+            '<div style="font-size:8px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;text-align:right;">CR {_m_label}</div>'
             '<div style="font-size:8px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;text-align:right;">Acción</div>'
             '</div>'
         )
@@ -702,7 +702,7 @@ def canal_recommendations_html(canal_dict):
                 f'</div>'
                 # CR Acum
                 f'<div style="font-size:10px;font-weight:800;color:{cr_acum_col};text-align:right;">{fmt_cr(cr_acum)}%</div>'
-                # CR Mayo
+                # CR {_m_label}
                 f'<div style="font-size:10px;font-weight:800;color:{cr_col};text-align:right;">{fmt_cr(cr_val)}%</div>'
                 # Badge
                 f'<div style="text-align:right;">'
@@ -888,7 +888,7 @@ def medio_card(medio_key, rows, alert=None):
     h = f'<div class="medio-card {cls}"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">'
     h += f'<div style="font-size:13px;font-weight:800;">{medio_key}</div>'
     h += f'<span class="{tag_cls}">{verdict}</span>'
-    h += f'<span style="font-size:10px;color:#64748b;">CR Mayo: <b style="color:{col}">{fmt_cr(may_cr)}%</b></span>'
+    h += f'<span style="font-size:10px;color:#64748b;">CR {_m_label}:<b style="color:{col}">{fmt_cr(may_cr)}%</b></span>'
     h += trend_badge
     h += '</div>'
 
@@ -919,7 +919,7 @@ def medio_card(medio_key, rows, alert=None):
           '<th style="text-align:right;padding:3px 4px">CR%</th></tr></thead><tbody>')
 
     for r in rows:
-        ip  = r['mes'] == 'May*'
+        ip  = any(ml in r['mes'] for ml in [_m_label, 'May*', 'Jun*'])
         rs  = 'background:rgba(56,189,248,.07);' if ip else ''
         cc  = cr_col(r['cr'], 2.0); cb = cr_bg(r['cr'], 2.0)
         pc  = r.get('pct_contact', 0)
@@ -971,7 +971,7 @@ def country_summary_card(pais, info):
     return f'''<div style="background:white;border-radius:8px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:3px solid {cr_c};display:flex;align-items:center;gap:10px;">
   <div style="flex:1;">
     <div style="font-size:12px;font-weight:800;">{pais}</div>
-    <div style="font-size:10px;color:#64748b;margin-top:2px;">{fmt_k(may["leads"])} leads · {fmt_k(may["mats"])} mat · May*</div>
+    <div style="font-size:10px;color:#64748b;margin-top:2px;">{fmt_k(may["leads"])} leads · {fmt_k(may["mats"])} mat · {_m_label}</div>
   </div>
   {sp}
   <div style="text-align:right;">
@@ -1064,13 +1064,13 @@ def build_medios_html():
     cut  = sorted([k for k in all_keys if _may_cr_of(k) < 1.5],   key=lambda k: -_may_cr_of(k))
 
     h  = '<div class="alert ae"><span>!</span><div>Datos de contactación son <b>solo de México</b>. Los canales internacionales no se muestran aquí.</div></div>'
-    h += f'<div class="alert ag"><span>i</span><div>Veredictos basados en <b>CR de Mayo {MAY_D} días reales</b> (sin proyección). La flecha ↑/↓ muestra cambio vs promedio histórico Ene-Abr. <b>%Cont.</b> = leads contactados.</div></div>'
+    h += f'<div class="alert ag"><span>i</span><div>Veredictos basados en <b>CR de {_m_label} {_cd} días reales</b> (sin proyección). La flecha ↑/↓ muestra cambio vs promedio histórico Ene-Abr. <b>%Cont.</b> = leads contactados.</div></div>'
     if inv:
-        h += '<div class="sec-hdr">INVERTIR MÁS · CR Mayo ≥ 2.5%</div><div class="medio-grid">' + ''.join(medio_card(k, _medio_rows(k), _medio_alert(k)) for k in inv) + '</div>'
+        h += '<div class="sec-hdr">INVERTIR MÁS · CR {_m_label} ≥ 2.5%</div><div class="medio-grid">' + ''.join(medio_card(k, _medio_rows(k), _medio_alert(k)) for k in inv) + '</div>'
     if opt:
-        h += '<div class="sec-hdr" style="margin-top:20px;">OPTIMIZAR · CR Mayo 1.5–2.5%</div><div class="medio-grid">' + ''.join(medio_card(k, _medio_rows(k), _medio_alert(k)) for k in opt) + '</div>'
+        h += '<div class="sec-hdr" style="margin-top:20px;">OPTIMIZAR · CR {_m_label} 1.5–2.5%</div><div class="medio-grid">' + ''.join(medio_card(k, _medio_rows(k), _medio_alert(k)) for k in opt) + '</div>'
     if cut:
-        h += '<div class="sec-hdr" style="margin-top:20px;">REVISAR · CR Mayo &lt; 1.5%</div><div class="medio-grid">' + ''.join(medio_card(k, _medio_rows(k), _medio_alert(k)) for k in cut) + '</div>'
+        h += '<div class="sec-hdr" style="margin-top:20px;">REVISAR · CR {_m_label} &lt; 1.5%</div><div class="medio-grid">' + ''.join(medio_card(k, _medio_rows(k), _medio_alert(k)) for k in cut) + '</div>'
     return h
 
 medios_html = build_medios_html()
@@ -1107,7 +1107,7 @@ def canal_ranking_left_html():
               <span style="background:{b};color:{c};padding:2px 8px;border-radius:12px;font-weight:800;font-size:11px;white-space:nowrap">{fmt_cr(r["cr"])}%</span>
             </div></td></tr>'''
     tbl += '</tbody></table>'
-    return f'<div><div class="sec-hdr">Ranking canales MX — Mayo 2026 <span>({MAY_D} días reales · contactación solo México)</span></div>{tbl}</div>'
+    return f'<div><div class="sec-hdr">Ranking canales MX — {_m_label} {_m_year} <span>({MAY_D} días reales · contactación solo México)</span></div>{tbl}</div>'
 
 # ── Top/bottom programs panel (right side, country-aware) ──────────────────────
 def build_top_progs_panel(prog_list, min_leads=100):
@@ -1129,10 +1129,10 @@ def build_top_progs_panel(prog_list, min_leads=100):
           <div style="width:36px;text-align:right;font-weight:800;color:{col};font-size:12px;flex-shrink:0;">{fmt_cr(p["abr_cr"])}%</div></div>'''
 
     h = '<div>'
-    h += f'<div class="sec-hdr">Top CR — Mayo 2026 <span>{MAY_D} días reales</span></div>'
+    h += f'<div class="sec-hdr">Top CR — {_m_label} {_m_year} <span>{MAY_D} días reales</span></div>'
     h += '<div style="background:white;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden;margin-bottom:12px;">'
     h += ''.join(mini_bar(p, '#16a34a') for p in top6) + '</div>'
-    h += f'<div class="sec-hdr">Menor CR — Mayo 2026 <span>{MAY_D} días reales</span></div>'
+    h += f'<div class="sec-hdr">Menor CR — {_m_label} {_m_year} <span>{MAY_D} días reales</span></div>'
     h += '<div style="background:white;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden;">'
     h += ''.join(mini_bar(p, '#dc2626') for p in bot6) + '</div>'
     h += '</div>'
@@ -1140,7 +1140,7 @@ def build_top_progs_panel(prog_list, min_leads=100):
 
 # ── Country comparison grid ────────────────────────────────────────────────────
 def country_grid_html():
-    h = f'<div class="sec-hdr">Comparación por país — Mayo 2026 <span>CR% real {MAY_D} días</span></div>'
+    h = f'<div class="sec-hdr">Comparación por país — {_m_label} {_m_year} <span>CR% real {MAY_D} días</span></div>'
     # MX first
     mx_t = T_MX
     mx_abr = mx_t[3]; mx_may = mx_t[4]
@@ -1150,7 +1150,7 @@ def country_grid_html():
       <div style="flex:1;"><div style="font-size:13px;font-weight:800;">MEXICO</div>
       <div style="font-size:10px;color:#64748b;margin-top:2px;">{fmt_k(mx_abr["leads"])} leads / {fmt_k(mx_abr["mats"])} mat</div></div>
       {mx_sp}<div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#16a34a">{fmt_cr(mx_abr["cr"])}%</div>
-      <div style="font-size:10px;color:{"#16a34a" if mx_may["cr"]>=mx_abr["cr"] else "#dc2626"};font-weight:700">May* {"Up" if mx_may["cr"]>=mx_abr["cr"] else "Down"}</div></div></div>'''
+      <div style="font-size:10px;color:{"#16a34a" if mx_may["cr"]>=mx_abr["cr"] else "#dc2626"};font-weight:700">{_m_label} {"▲" if mx_may["cr"]>=mx_abr["cr"] else "▼"}</div></div></div>'''
     for pais, info in INT_SORTED:
         h += country_summary_card(pais, info)
     h += '</div>'
@@ -1322,7 +1322,7 @@ def build_acciones_html(prog_list, medio_dict, avg_cr_val):
 
     note = (f'<div class="alert ainfo"><span>i</span><div>'
             f'Generado automáticamente cruzando: Funnel por programa×canal · Inversión por canal · '
-            f'Programas MX · Contactación MX vs año anterior · Mayo 2026'
+            f'Programas MX · Contactación MX vs año anterior · {_m_label} {_m_year}'
             f'</div></div>')
 
     return note + html
@@ -1354,7 +1354,7 @@ def build_inv_canal_html(inv_canal):
 
     kpi_bar = (
         f'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">'
-        f'<div class="kpi b"><div class="lbl">Total Inversión Mayo</div><div class="val">{fmt_mx(total_inv)}</div><div class="sub">{len(paid)} canales pago</div></div>'
+        f'<div class="kpi b"><div class="lbl">Total Inversión {_m_label}</div><div class="val">{fmt_mx(total_inv)}</div><div class="sub">{len(paid)} canales pago</div></div>'
         f'<div class="kpi n"><div class="lbl">CPL Promedio</div><div class="val">${overall_cpl:,.0f}</div><div class="sub">Inversión / Leads</div></div>'
         f'<div class="kpi n"><div class="lbl">CPA Promedio</div><div class="val">${overall_cpa:,.0f}</div><div class="sub">Inversión / Ventas</div></div>'
         f'<div class="kpi g"><div class="lbl">Ventas Totales (pago)</div><div class="val">{fmt_k(total_ven)}</div><div class="sub">{fmt_k(total_lead)} leads</div></div>'
@@ -1494,7 +1494,7 @@ def build_inv_canal_html(inv_canal):
     org_section = ''
     if org_rows:
         org_section = (
-            f'<div class="sec-hdr" style="margin-top:4px;">Canales Orgánicos <span>Sin inversión directa · Mayo 2026</span></div>'
+            f'<div class="sec-hdr" style="margin-top:4px;">Canales Orgánicos <span>Sin inversión directa · {_m_label} {_m_year}</span></div>'
             f'<div style="background:white;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;">{org_rows}</div>'
         )
 
@@ -1504,7 +1504,7 @@ def build_inv_canal_html(inv_canal):
         f'L=Leads · V=Ventas · CR% por celda · CPL/CPA en header de cada canal · '
         f'<span style="color:#16a34a;font-weight:700;">Verde ≥ 2%</span> · '
         f'<span style="color:#d97706;font-weight:700;">Naranja ≥ 1%</span> · '
-        f'<span style="color:#dc2626;font-weight:700;">Rojo &lt; 1%</span> · MX · Mayo 2026'
+        f'<span style="color:#dc2626;font-weight:700;">Rojo &lt; 1%</span> · MX · {_m_label} {_m_year}'
         f'</div></div>'
     )
 
@@ -1623,7 +1623,7 @@ def build_inv_canal_html(inv_canal):
         html += '</div>'
         return (
             f'<div class="sec-hdr" style="margin-top:16px;">Recomendaciones por programa × canal '
-            f'<span>CR de cada programa comparado contra el promedio real del canal · Mayo 2026</span></div>'
+            f'<span>CR de cada programa comparado contra el promedio real del canal · {_m_label} {_m_year}</span></div>'
             + html
         )
 
@@ -1658,7 +1658,7 @@ def build_inv_canal_html(inv_canal):
         f'</script>'
     )
 
-    hdr = f'<div class="sec-hdr">Programas × Canales <span>Mayo 2026 · {len(all_progs)} programas · scroll horizontal →</span></div>'
+    hdr = f'<div class="sec-hdr">Programas × Canales <span>{_m_label} {_m_year} · {len(all_progs)} programas · scroll horizontal →</span></div>'
     return kpi_bar + info + filtros + hdr + table + org_section + conclusiones()
 
 
@@ -1672,7 +1672,8 @@ def build_diagnostico_html():
 
     totals = FUNNEL_TOTALS
     mar_t = totals.get('Marzo', {})
-    may_t = totals.get('Mayo',  {})
+    # Try current month label first, fallback to 'Mayo' for backward compat
+    may_t = totals.get('Mayo', totals.get(_m_label, {}))
 
     mar_pc  = mar_t.get('pct_cont', 0)
     mar_ef  = mar_t.get('pct_ef',   0)
@@ -1704,7 +1705,7 @@ def build_diagnostico_html():
             f'<div><div style="font-size:9px;color:#94a3b8;margin-bottom:2px;">Marzo</div>'
             f'<div style="font-size:20px;font-weight:800;color:#475569;">{mar_val}{unit}</div></div>'
             f'<div style="font-size:18px;color:#cbd5e1;">→</div>'
-            f'<div><div style="font-size:9px;color:#94a3b8;margin-bottom:2px;">Mayo</div>'
+            f'<div><div style="font-size:9px;color:#94a3b8;margin-bottom:2px;">{_m_label}</div>'
             f'<div style="font-size:20px;font-weight:800;color:{col};">{may_val}{unit}</div></div>'
             f'</div>'
             f'<div style="margin-top:10px;font-size:24px;font-weight:900;color:{col};">'
@@ -1732,7 +1733,7 @@ def build_diagnostico_html():
 
     # Section 1: ¿Qué cambió?
     s1 = (
-        f'<div class="sec-hdr">¿Qué cambió? — Marzo vs Mayo <span>Totales MX · todas las carreras</span></div>'
+        f'<div class="sec-hdr">¿Qué cambió? — Marzo vs {_m_label} <span>Totales MX · todas las carreras</span></div>'
         f'{alerts_html}'
         f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px;">'
         f'{metric_card("%Contacto", mar_pc, may_pc, d_pc)}'
@@ -1861,7 +1862,7 @@ def build_diagnostico_html():
             f'</div>'
         )
 
-    b1 = bucket_card('🔴','CONTACTO BAJO','%Contacto < 50% en Mayo',
+    b1 = bucket_card('🔴','CONTACTO BAJO','%Contacto &lt; 50% en {_m_label}',
                      'El equipo no llega a estos leads. Revisar asignación y CRM.',
                      '#dc2626','#fff8f8',
                      bucket_rows(bucket_contacto,'pct_cont','trend_pct_cont','#dc2626'),
@@ -1883,7 +1884,7 @@ def build_diagnostico_html():
                      len(bucket_escalar), pct_total(bucket_escalar))
 
     s2 = (
-        f'<div class="sec-hdr">¿Dónde rompe el funnel? <span>Por programa · Mayo 2026 · % del total de leads · expandido por canal</span></div>'
+        f'<div class="sec-hdr">¿Dónde rompe el funnel? <span>Por programa · {_m_label} {_m_year} · % del total de leads · expandido por canal</span></div>'
         f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;">'
         f'{b1}{b2}{b3}{b4}'
         f'</div>'
@@ -2143,7 +2144,7 @@ def build_funnel_interactivo_html():
         return '<div class="alert aw"><span>!</span><div>Sin datos para tabla interactiva.</div></div>'
 
     MONTH_KEYS   = ['ene', 'feb', 'mar', 'abr', 'may']
-    MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May*']
+    MONTH_LABELS = {str(D.get('months', ['Ene','Feb','Mar','Abr','May']))}
 
     # Build lookup: prog_name → list of medio rows (from FUNNEL_PROG_MEDIO)
     prog_medio_map = {}
@@ -2785,14 +2786,14 @@ may_int_cr = T_INT[4]['cr']
 
 filter_bar = '<div class="country-bar"><span class="lbl">Pais:</span>'
 filter_bar += '<button class="cfilter on" id="cf-all" onclick="setPais(\'all\')">Todos</button>'
-filter_bar += f'<button class="cfilter mx" id="cf-mx" onclick="setPais(\'mx\')">Mexico (May* {fmt_cr(may_mx_cr)}%)</button>'
-filter_bar += f'<button class="cfilter int" id="cf-int" onclick="setPais(\'int\')">Internacional (May* {fmt_cr(may_int_cr)}%)</button>'
+filter_bar += f'<button class="cfilter mx" id="cf-mx" onclick="setPais(\'mx\')">Mexico ({_m_label} {fmt_cr(may_mx_cr)}%)</button>'
+filter_bar += f'<button class="cfilter int" id="cf-int" onclick="setPais(\'int\')">Internacional ({_m_label} {fmt_cr(may_int_cr)}%)</button>'
 for pais, info in INT_SORTED:
     safe_id = f'c_{pais}'
     cr = info['may_cr']
     col_class = 'mx' if cr >= 2.0 else 'int'
     filter_bar += f'<button class="cfilter {col_class}" id="cf-{safe_id}" onclick="setPais(\'{safe_id}\')">{pais} ({fmt_cr(cr)}%)</button>'
-filter_bar += f'<span style="margin-left:8px;font-size:10px;color:#475569;">May* = {MAY_D} dias x {MAY_F:.1f}x</span></div>'
+filter_bar += f'<span style="margin-left:8px;font-size:10px;color:#475569;">{_m_label} = {_cd} dias reales</span></div>'
 
 # ── KPI groups ─────────────────────────────────────────────────────────────────
 kpi_html  = f'<div class="kpi-group on" data-pais="all">{kpis_all}</div>'
@@ -2859,9 +2860,9 @@ HTML = f"""<!DOCTYPE html>
     <div class="sub">Sin Diplomados · Datos al {FECHA_DATOS} · Sin proyección · Filtrar por pais arriba</div>
   </div>
   <div class="badges">
-    <span class="badge badge-g">MX May*: {fmt_cr(may_mx_cr)}%</span>
-    <span class="badge badge-p">INT May*: {fmt_cr(may_int_cr)}%</span>
-    <span class="badge badge-o">May* = {MAY_D} dias x {MAY_F:.1f}x</span>
+    <span class="badge badge-g">MX {_m_label}: {fmt_cr(may_mx_cr)}%</span>
+    <span class="badge badge-p">INT {_m_label}: {fmt_cr(may_int_cr)}%</span>
+    <span class="badge badge-o">{_m_label} = {_cd} dias reales</span>
   </div>
 </div>
 
@@ -2874,14 +2875,14 @@ HTML = f"""<!DOCTYPE html>
   {yoy_html}
   {country_grid}
   {ranking_html}
-  <div class="sec-hdr" style="margin-top:8px;">Matriz Pricing × Conversión <span>Solo MX · Mayo* · ¿Dónde vale más mejorar el CR?</span></div>
+  <div class="sec-hdr" style="margin-top:8px;">Matriz Pricing × Conversión <span>Solo MX · {_m_label} · ¿Dónde vale más mejorar el CR?</span></div>
   {pricing_matrix_html}
-  <div class="alert ainfo" style="margin-top:14px;"><span>i</span><div>Selecciona un pais en la barra superior para filtrar todas las secciones. <b>May*</b> = proyeccion a 31 dias ({MAY_D} dias reales x {MAY_F:.1f}x). Contactacion disponible solo para Mexico.</div></div>
+  <div class="alert ainfo" style="margin-top:14px;"><span>i</span><div>Selecciona un pais en la barra superior para filtrar todas las secciones. <b>{_m_label}</b> = {_cd} días reales · sin proyección. Contactacion disponible solo para Mexico.</div></div>
 </div>
 
 <!-- PROGRAMAS -->
 <div class="tab" id="tab-programs">
-  <div class="sec-hdr">Programas por CR Mayo 2026 <span>CR real {MAY_D} días · Filtrar por país arriba</span></div>
+  <div class="sec-hdr">Programas por CR {_m_label} {_m_year} <span>CR real {MAY_D} días · Filtrar por país arriba</span></div>
   {nuevos_section_html}
   {vol_drop_html}
   {prog_html}
@@ -2902,19 +2903,19 @@ HTML = f"""<!DOCTYPE html>
 
 <!-- MEDIOS MX -->
 <div class="tab" id="tab-medios">
-  <div class="sec-hdr">Funnel por Medio <span>Solo Mexico · Ene-May 2026 real · Mayo sin proyección ({MAY_D} días)</span></div>
+  <div class="sec-hdr">Funnel por Medio <span>Solo Mexico · Ene-{_m_label} {_m_year} real · sin proyección ({_cd} días)</span></div>
   {medios_html}
 </div>
 
 <!-- ACCIONES -->
 <div class="tab" id="tab-acciones">
-  <div class="sec-hdr">Acciones concretas <span>Solo MX · generado desde datos reales de Mayo 2026 · ordenadas por urgencia</span></div>
+  <div class="sec-hdr">Acciones concretas <span>Solo MX · generado desde datos reales de {_m_label} {_m_year} · ordenadas por urgencia</span></div>
   {acciones_html}
 </div>
 
 <!-- DIAGNÓSTICO -->
 <div class="tab" id="tab-diag">
-  <div class="sec-hdr">Diagnóstico de Funnel MX <span>¿Qué cambió y dónde rompe? · Enero–Mayo 2026 · por programa</span></div>
+  <div class="sec-hdr">Diagnóstico de Funnel MX <span>¿Qué cambió y dónde rompe? · Enero–{_m_label} {_m_year} · por programa</span></div>
   {diagnostico_html}
   {funnel_interactivo_html}
   {diag_medio_html}
@@ -2922,7 +2923,7 @@ HTML = f"""<!DOCTYPE html>
 
 <!-- INVERSIÓN x CANAL -->
 <div class="tab" id="tab-inv">
-  <div class="sec-hdr">Inversión x Canal <span>Mayo 2026 · Fuente: RESUMEN · Top 5 programas por canal (MX)</span></div>
+  <div class="sec-hdr">Inversión x Canal <span>{_m_label} {_m_year} · Fuente: RESUMEN · Top 5 programas por canal (MX)</span></div>
   {inv_canal_html}
 </div>
 
