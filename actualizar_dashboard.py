@@ -164,19 +164,40 @@ def escape_path(p):
 with open(EXTRACT, encoding='utf-8') as f:
     code = f.read()
 
-# Detectar días de mayo según la fecha del archivo
-may_days = 20  # default
+# Detectar mes actual y días reales del archivo
+_MONTH_DAYS  = {1:31,2:28,3:31,4:30,5:31,6:30,7:31,8:31,9:30,10:31,11:30,12:31}
+_MONTH_NAMES = {1:'ene',2:'feb',3:'mar',4:'abr',5:'may',6:'jun',
+                7:'jul',8:'ago',9:'sep',10:'oct',11:'nov',12:'dic'}
 fname = Path(leads_file).name
-m_may  = re.search(r'data - 2026-05-(\d{2})T', fname)
-m_jun  = re.search(r'data - 2026-06-(\d{2})T', fname)
-m_later= re.search(r'data - 2026-(?:07|08|09|10|11|12)-\d{2}T', fname)
-if m_may:
-    file_day = int(m_may.group(1))
-    may_days = file_day - 1   # datos al día anterior del archivo
-    print(f"  Archivo mayo dia {file_day} -> dias reales: {may_days}")
-elif m_jun or m_later:
-    may_days = 31             # archivo de junio en adelante = mayo completo
-    print(f"  Archivo de junio+ -> mayo completo: 31 dias")
+m_date = re.search(r'data - 2026-(\d{2})-(\d{2})T', fname)
+
+may_days    = 31       # días de mayo completados (siempre completo cuando hay archivo posterior)
+cur_month   = 'may 2026'
+cur_days    = 31
+
+if m_date:
+    file_month = int(m_date.group(1))
+    file_day   = int(m_date.group(2))
+    if file_month == 5:                  # archivo de mayo
+        may_days  = file_day - 1
+        cur_month = 'may 2026'
+        cur_days  = may_days
+        print(f"  Archivo mayo dia {file_day} -> dias reales: {may_days}")
+    else:                                # archivo de junio o posterior
+        may_days   = 31                  # mayo completo
+        _new_month = f'{_MONTH_NAMES[file_month]} 2026'
+        _new_days  = file_day - 1        # datos al día anterior del archivo
+        if _new_days <= 0:
+            # Día 1 del mes nuevo → todavía sin datos del mes nuevo, usar mes anterior completo
+            cur_month = f'{_MONTH_NAMES[file_month-1]} 2026'
+            cur_days  = _MONTH_DAYS[file_month - 1]
+            print(f"  Archivo dia 1 de {_new_month} -> usando {cur_month} completo ({cur_days}d)")
+        else:
+            cur_month = _new_month
+            cur_days  = _new_days
+            print(f"  Archivo {cur_month} dia {file_day} -> mayo completo, {cur_month}: {cur_days} dias reales")
+else:
+    print(f"  AVISO: no se pudo detectar fecha del archivo, usando defaults")
 
 # Reemplazar paths línea por línea (evita problemas con \ en paths de Windows)
 new_lines = []
@@ -198,6 +219,10 @@ for line in code.splitlines():
         line = f"FUNNEL_PROG_MEDIO_FILE = r'{funnel_prog_medio_file}'"
     elif stripped.startswith('MAY_DAYS_DONE'):
         line = f"MAY_DAYS_DONE  = {may_days}   # auto-detectado del nombre del archivo"
+    elif stripped.startswith('CUR_MONTH'):
+        line = f"CUR_MONTH      = '{cur_month}'   # mes actual auto-detectado"
+    elif stripped.startswith('CUR_DAYS_DONE'):
+        line = f"CUR_DAYS_DONE  = {cur_days}            # días reales del mes actual"
     new_lines.append(line)
 
 with open(EXTRACT, 'w', encoding='utf-8') as f:
@@ -277,11 +302,11 @@ print("=" * 60)
 print("  OK DASHBOARD ACTUALIZADO")
 print(f"  Archivo local : {OUTPUT}")
 print(f"  URL publica   : {PAGES_URL}")
-print(f"  Fecha datos   : {may_days}/05/2026")
+print(f"  Fecha datos   : {cur_month} ({cur_days} dias reales)")
 print("=" * 60)
 print()
 
-# Abrir en navegador
-webbrowser.open(str(OUTPUT))
-print("Abriendo en el navegador...")
+# Abrir GitHub Pages en el navegador
+webbrowser.open(PAGES_URL)
+print(f"Abriendo GitHub Pages: {PAGES_URL}")
 input("\nPresioná Enter para cerrar...")
