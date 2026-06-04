@@ -111,6 +111,149 @@ def click_text(page, texts, timeout=5000):
     return False
 
 
+def esperar_descarga_reciente(download_dir, segundos=90):
+    """Espera hasta que aparezca un .xlsx nuevo en download_dir."""
+    t0 = time.time()
+    antes = {f for f in download_dir.glob('*.xlsx')}
+    while time.time() - t0 < segundos:
+        ahora = {f for f in download_dir.glob('*.xlsx')}
+        nuevos = ahora - antes
+        if nuevos:
+            f = sorted(nuevos, key=lambda x: x.stat().st_mtime, reverse=True)[0]
+            return f
+        time.sleep(1)
+    return None
+
+
+def flujo_vista_amplia_exportar(page, nombre):
+    """Flujo 1: Click en Vista Amplia → click en Exportar."""
+    print(f"  [{nombre}] Hover sobre el visual...")
+    # Hacer hover para que aparezcan los botones del visual
+    for sel in ['[class*="visual-container"]', '[class*="visualContainer"]',
+                '[class*="visual"]', 'div[data-testid*="visual"]']:
+        try:
+            vis = page.query_selector(sel)
+            if vis:
+                vis.hover()
+                time.sleep(1)
+                break
+        except Exception:
+            continue
+
+    print(f"  [{nombre}] Click en Vista amplia...")
+    ok = click_text(page, ['Vista amplia', 'Focus mode', 'Modo de enfoque',
+                            'Ampliar', 'Expand', 'Expandir'], timeout=6000)
+    if not ok:
+        for sel in ['[aria-label*="Focus"]', '[aria-label*="Ampliar"]',
+                    '[aria-label*="Vista amplia"]', '[title*="Vista amplia"]',
+                    '[title*="Focus"]', '.focusModeButton']:
+            try:
+                el = page.wait_for_selector(sel, timeout=3000)
+                if el and el.is_visible():
+                    el.click(); ok = True; break
+            except PWTimeout:
+                continue
+
+    if ok:
+        print(f"    Vista amplia: OK")
+        time.sleep(3)
+    else:
+        print(f"    Vista amplia: no encontrada, continuando igual...")
+
+    print(f"  [{nombre}] Click en Exportar...")
+    return click_text(page, ['Exportar', 'Export data', 'Exportar datos',
+                              'Export', 'Descargar', 'Download'], timeout=8000)
+
+
+def flujo_filtro_anio_exportar(page, nombre, anio='2026'):
+    """Flujo 2: Aplicar filtro Año=2026 → Exportar."""
+    print(f"  [{nombre}] Aplicando filtro Año {anio}...")
+    time.sleep(3)
+
+    # Buscar el panel de filtros o slicer de Mes y Año
+    filter_applied = False
+
+    # Intentar buscar slicer con "2026" o "Mes y Año"
+    for sel in [
+        f'div[aria-label*="2026"]',
+        f'button:has-text("2026")',
+        f'[title*="2026"]',
+        f'div[class*="slicer"] button',
+        f'div[class*="slicerItem"]',
+    ]:
+        try:
+            items = page.query_selector_all(sel)
+            for item in items:
+                txt = item.inner_text() if hasattr(item, 'inner_text') else ''
+                if '2026' in str(txt) or '2026' in (item.get_attribute('aria-label') or ''):
+                    item.click()
+                    filter_applied = True
+                    print(f"    Filtro 2026 aplicado OK")
+                    time.sleep(2)
+                    break
+            if filter_applied:
+                break
+        except Exception:
+            continue
+
+    if not filter_applied:
+        print(f"    AVISO: no se encontró filtro 2026 automáticamente")
+        print(f"    Seleccioná manualmente 'Todo 2026' en el filtro y presioná Enter...")
+        input()
+
+    print(f"  [{nombre}] Click en Exportar...")
+    return click_text(page, ['Exportar', 'Export data', 'Exportar datos',
+                              'Export', 'Descargar'], timeout=8000)
+
+
+def flujo_vista_combinada_exportar(page, nombre):
+    """Flujo 3: Click en Vista Combinada (arriba derecha) → seleccionar 2026 → Exportar."""
+    print(f"  [{nombre}] Buscando 'Vista combinada' (arriba derecha)...")
+    time.sleep(3)
+
+    ok = click_text(page, ['Vista combinada', 'Combined view', 'Vista combinada',
+                            'All', 'Todo', 'Combinar'], timeout=8000)
+
+    if not ok:
+        for sel in ['[aria-label*="combinada"]', '[aria-label*="combined"]',
+                    '[title*="combinada"]', '[title*="combined"]',
+                    'button:has-text("Vista")', '.combinedViewButton']:
+            try:
+                el = page.wait_for_selector(sel, timeout=3000)
+                if el and el.is_visible():
+                    el.click(); ok = True
+                    print(f"    Vista combinada: {sel}")
+                    break
+            except PWTimeout:
+                continue
+
+    if ok:
+        print(f"    Vista combinada: OK")
+        time.sleep(3)
+    else:
+        print(f"    AVISO: no encontré 'Vista combinada' — seleccioná manualmente y presioná Enter...")
+        input()
+
+    # Seleccionar todos los meses de 2026
+    print(f"  [{nombre}] Seleccionando todos los meses 2026...")
+    for sel_all in ['button:has-text("Seleccionar todo")', 'button:has-text("Select all")',
+                    '[aria-label*="Select all"]', '[aria-label*="Seleccionar todo"]',
+                    'input[type="checkbox"][aria-label*="all"]']:
+        try:
+            el = page.wait_for_selector(sel_all, timeout=4000)
+            if el and el.is_visible():
+                el.click()
+                print(f"    Seleccionar todo: OK")
+                time.sleep(2)
+                break
+        except PWTimeout:
+            continue
+
+    print(f"  [{nombre}] Click en Exportar...")
+    return click_text(page, ['Exportar', 'Export data', 'Exportar datos',
+                              'Export', 'Descargar'], timeout=8000)
+
+
 def exportar_reporte(page, reporte, download_dir):
     """Navega al reporte, hace click en Vista Amplia → Exportar y descarga el Excel."""
     nombre = reporte['nombre']
@@ -120,123 +263,58 @@ def exportar_reporte(page, reporte, download_dir):
         print(f"  SALTANDO {nombre} — URL no configurada aún")
         return None
 
-    print(f"\n  [{nombre}] Abriendo reporte...")
+    flujo = reporte.get('flujo', 'vista_amplia_exportar')
+
+    print(f"\n  [{nombre}] Abriendo reporte (flujo: {flujo})...")
     page.goto(url, wait_until='domcontentloaded', timeout=40000)
-    time.sleep(5)  # esperar que cargue el visual
+    time.sleep(5)
 
-    # ── Paso 1: Click en "Vista amplia" (Focus mode / Expand) ─────────────────
-    print(f"  [{nombre}] Buscando botón Vista amplia...")
-    vista_amplia_encontrada = click_text(page,
-        ['Vista amplia', 'Focus mode', 'Expand', 'Expandir', 'Ver en pantalla completa'],
-        timeout=8000
-    )
-
-    if not vista_amplia_encontrada:
-        # Intentar con íconos de expansión (botones sin texto)
-        for sel in [
-            '[aria-label*="Focus"]', '[aria-label*="Ampliar"]', '[aria-label*="focus"]',
-            'button[aria-label*="Vista"]', '[data-testid*="focus"]',
-            'button.focusModeButton', '[class*="focusMode"]',
-        ]:
-            try:
-                el = page.wait_for_selector(sel, timeout=3000)
-                if el and el.is_visible():
-                    el.click()
-                    vista_amplia_encontrada = True
-                    print(f"    Vista amplia: {sel}")
-                    break
-            except PWTimeout:
-                continue
-
-    if not vista_amplia_encontrada:
-        # Hover sobre el visual para que aparezcan los botones
-        try:
-            visual = page.wait_for_selector('[class*="visual-container"], [class*="visualContainer"]', timeout=5000)
-            if visual:
-                visual.hover()
-                time.sleep(1)
-                vista_amplia_encontrada = click_text(page,
-                    ['Vista amplia', 'Focus mode', 'Expand'], timeout=3000)
-        except PWTimeout:
-            pass
-
-    if vista_amplia_encontrada:
-        print(f"    Vista amplia: OK")
-        time.sleep(3)
-    else:
-        print(f"    AVISO: no se encontró Vista amplia — intentando exportar directamente")
-
-    # ── Paso 2: Click en "Exportar" ───────────────────────────────────────────
-    print(f"  [{nombre}] Buscando botón Exportar...")
-
-    # Intentar con context menu (right-click sobre la tabla si hay)
+    # ── Ejecutar flujo específico ──────────────────────────────────────────────
     exportar_ok = False
-
-    # Primero buscar botón directo
-    exportar_ok = click_text(page,
-        ['Exportar', 'Export', 'Exportar datos', 'Export data', 'Descargar', 'Download'],
-        timeout=8000
-    )
-
-    if not exportar_ok:
-        # Botón de más opciones (⋯) → Exportar
-        for more_sel in [
-            'button[aria-label*="opciones"]', 'button[aria-label*="options"]',
-            'button[aria-label*="More"]', 'button[aria-label*="Más"]',
-            '[class*="moreOptions"]', 'button[title*="opciones"]',
-        ]:
-            try:
-                el = page.wait_for_selector(more_sel, timeout=3000)
-                if el and el.is_visible():
-                    el.click()
-                    time.sleep(1)
-                    exportar_ok = click_text(page,
-                        ['Exportar', 'Export data', 'Exportar datos'], timeout=3000)
-                    if exportar_ok:
-                        break
-            except PWTimeout:
-                continue
+    if flujo == 'vista_amplia_exportar':
+        exportar_ok = flujo_vista_amplia_exportar(page, nombre)
+    elif flujo == 'filtro_anio_exportar':
+        exportar_ok = flujo_filtro_anio_exportar(page, nombre, reporte.get('filtro_anio', '2026'))
+    elif flujo == 'vista_combinada_exportar':
+        exportar_ok = flujo_vista_combinada_exportar(page, nombre)
+    else:
+        exportar_ok = flujo_vista_amplia_exportar(page, nombre)
 
     if not exportar_ok:
         print(f"    No se encontró Exportar automáticamente.")
-        print(f"    Por favor hacé clic en 'Vista amplia' y luego 'Exportar' manualmente.")
-        print(f"    Cuando el archivo esté descargado en Downloads, presioná Enter...")
+        print(f"    Exportá manualmente y presioná Enter cuando el archivo esté en Downloads...")
         input()
         files = sorted(DOWNLOADS.glob('*.xlsx'), key=lambda f: f.stat().st_mtime, reverse=True)
-        if files:
-            print(f"    Usando: {files[0].name}")
-            return files[0]
-        return None
+        return files[0] if files else None
 
-    # ── Paso 3: Confirmar formato y esperar descarga ───────────────────────────
+    # ── Confirmar formato y esperar descarga ───────────────────────────────────
     time.sleep(2)
-
-    # A veces aparece un diálogo de formato → elegir .xlsx o confirmar
+    # A veces aparece diálogo de confirmación de formato
     for confirm_sel in [
-        'button:has-text(".xlsx")', 'button:has-text("Excel")',
-        'input[value*="xlsx"]', 'button:has-text("Exportar")',
-        'button:has-text("Export")', 'button[type="submit"]',
+        'button:has-text("Exportar")', 'button:has-text("Export")',
+        'button:has-text(".xlsx")',    'button:has-text("Excel")',
+        'button[type="submit"]',
     ]:
         try:
-            el = page.wait_for_selector(confirm_sel, timeout=3000)
+            el = page.wait_for_selector(confirm_sel, timeout=4000)
             if el and el.is_visible():
-                with page.expect_download(timeout=90000) as dl_info:
-                    el.click()
-                download = dl_info.value
-                archivo = download_dir / download.suggested_filename
-                download.save_as(str(archivo))
-                print(f"    Descargado: {archivo.name}")
-                return archivo
+                el.click()
+                print(f"    Confirmado: {confirm_sel}")
+                break
         except PWTimeout:
             continue
 
-    # Si no apareció diálogo, la descarga puede haber iniciado sola
-    print(f"    Esperando descarga automática...")
-    time.sleep(8)
+    print(f"    Esperando descarga...")
+    archivo = esperar_descarga_reciente(download_dir, segundos=90)
+    if archivo:
+        print(f"    Descargado: {archivo.name}")
+        return archivo
+
+    print(f"    No se detectó descarga automática.")
+    print(f"    Si ya descargó, presioná Enter...")
+    input()
     files = sorted(DOWNLOADS.glob('*.xlsx'), key=lambda f: f.stat().st_mtime, reverse=True)
-    if files and (time.time() - files[0].stat().st_mtime) < 30:
-        print(f"    Descargado: {files[0].name}")
-        return files[0]
+    return files[0] if files else None
 
     print(f"    No se detectó descarga. Verificá manualmente.")
     return None
