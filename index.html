@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Dashboard Conversion 2026 · v1783025822</title>
+<title>Dashboard Conversion 2026 · v1783036913</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f8;color:#1e293b;font-size:13px}
@@ -102,6 +102,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f8;color:#1e293b;fo
 </div>
 
 <div class="country-bar"><span class="lbl">Pais:</span><button class="cfilter mx on" id="cf-mx" onclick="setPais('mx')">Mexico (Jul 0.0%)</button><button class="cfilter int" id="cf-c_COLOMBIA" onclick="setPais('c_COLOMBIA')">COLOMBIA (0.0%)</button><button class="cfilter mx" id="cf-c_ECUADOR" onclick="setPais('c_ECUADOR')">ECUADOR (2.3%)</button><button class="cfilter int" id="cf-c_DOMINICANA" onclick="setPais('c_DOMINICANA')">DOMINICANA (0.0%)</button><button class="cfilter int" id="cf-c_EL SALVADOR" onclick="setPais('c_EL SALVADOR')">EL SALVADOR (0.0%)</button><span style="margin-left:8px;font-size:10px;color:#475569;">Jul = 1 dias reales</span></div>
+<div class="month-bar" style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:7px 20px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#64748b;margin-right:2px;">Ver:</span><button id="gmb-acumulado" onclick="setMesGlobal('acumulado')" style="padding:5px 14px;border-radius:20px;border:1.5px solid #6366f1;background:#fff;color:#6366f1;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;">Acumulado Ene–Jun</button><button id="gmb-ene" onclick="setMesGlobal('ene')" style="background:white;color:#475569;border-color:#cbd5e1;padding:5px 14px;border-radius:20px;border:1.5px solid;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;">Ene</button><button id="gmb-feb" onclick="setMesGlobal('feb')" style="background:white;color:#475569;border-color:#cbd5e1;padding:5px 14px;border-radius:20px;border:1.5px solid;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;">Feb</button><button id="gmb-mar" onclick="setMesGlobal('mar')" style="background:white;color:#475569;border-color:#cbd5e1;padding:5px 14px;border-radius:20px;border:1.5px solid;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;">Mar</button><button id="gmb-abr" onclick="setMesGlobal('abr')" style="background:white;color:#475569;border-color:#cbd5e1;padding:5px 14px;border-radius:20px;border:1.5px solid;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;">Abr</button><button id="gmb-may" onclick="setMesGlobal('may')" style="background:white;color:#475569;border-color:#cbd5e1;padding:5px 14px;border-radius:20px;border:1.5px solid;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;">May</button><button id="gmb-jun" onclick="setMesGlobal('jun')" style="background:#0f172a;color:white;border-color:#0f172a;padding:5px 14px;border-radius:20px;border:1.5px solid;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;">Jun</button></div>
 
 <div class="hero">
   <div>
@@ -2237,7 +2238,21 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f8;color:#1e293b;fo
     // Update top KPI cards
     if (typeof updateDiagKpiCards === 'function') updateDiagKpiCards(m);
 
-    // Update button styles
+    // Sync global month bar
+    if (typeof setMesGlobal !== 'undefined') {
+      document.querySelectorAll('[id^="gmb-"]').forEach(function(b) {
+        var isThis = b.id === 'gmb-' + m;
+        if (b.id === 'gmb-acumulado') {
+          b.style.background = '#fff'; b.style.color = '#6366f1'; b.style.borderColor = '#6366f1';
+        } else {
+          b.style.background = isThis ? '#0f172a' : '#fff';
+          b.style.color      = isThis ? '#fff'    : '#475569';
+          b.style.borderColor= isThis ? '#0f172a' : '#cbd5e1';
+        }
+      });
+    }
+
+    // Update button styles (internal funnel table buttons)
     MONTH_KEYS.forEach(function(mk) {
       var btn = document.getElementById('mbtn-' + mk);
       if (!btn) return;
@@ -2472,17 +2487,48 @@ Sin Diplomados · Datos reales sin proyección · Jul 2026 · 1 días reales · 
 <script>var DIAG_KPI = {"ene": {"cur_pc": 27.2, "prev_pc": 0, "cur_ef": 21.7, "prev_ef": 0, "cur_cr": 3.1, "prev_cr": 3.1, "cur_lbl": "Ene", "prev_lbl": ""}, "feb": {"cur_pc": 30.1, "prev_pc": 27.2, "cur_ef": 16.0, "prev_ef": 21.7, "cur_cr": 2.4, "prev_cr": 3.1, "cur_lbl": "Feb", "prev_lbl": "Ene"}, "mar": {"cur_pc": 29.2, "prev_pc": 30.1, "cur_ef": 17.4, "prev_ef": 16.0, "cur_cr": 2.53, "prev_cr": 2.4, "cur_lbl": "Mar", "prev_lbl": "Feb"}, "abr": {"cur_pc": 30.7, "prev_pc": 29.2, "cur_ef": 18.2, "prev_ef": 17.4, "cur_cr": 3.26, "prev_cr": 2.53, "cur_lbl": "Abr", "prev_lbl": "Mar"}, "may": {"cur_pc": 31.6, "prev_pc": 30.7, "cur_ef": 40.6, "prev_ef": 18.2, "cur_cr": 2.81, "prev_cr": 3.26, "cur_lbl": "May", "prev_lbl": "Abr"}, "jun": {"cur_pc": 28.8, "prev_pc": 31.6, "cur_ef": 14.8, "prev_ef": 40.6, "cur_cr": 2.3, "prev_cr": 2.81, "cur_lbl": "Jun", "prev_lbl": "May"}, "jul": {"cur_pc": 0, "prev_pc": 28.8, "cur_ef": 0, "prev_ef": 14.8, "cur_cr": 0, "prev_cr": 2.3, "cur_lbl": "Jul", "prev_lbl": "Jun"}};</script>
 <script>
 function switchDiagView(view) {
-  document.getElementById('diag-pormes').style.display    = view === 'pormes'    ? '' : 'none';
-  document.getElementById('diag-acumulado').style.display = view === 'acumulado' ? '' : 'none';
+  var pm = document.getElementById('diag-pormes');
+  var ac = document.getElementById('diag-acumulado');
+  if (pm) pm.style.display = view === 'pormes'    ? '' : 'none';
+  if (ac) ac.style.display = view === 'acumulado' ? '' : 'none';
   var active   = '#6366f1', inactive = '#fff';
   var btnPm = document.getElementById('btn-pormes');
   var btnAc = document.getElementById('btn-acumulado');
-  if (view === 'pormes') {
-    btnPm.style.background = active;   btnPm.style.color = inactive;
-    btnAc.style.background = inactive; btnAc.style.color = active;
+  if (btnPm && btnAc) {
+    if (view === 'pormes') {
+      btnPm.style.background = active;   btnPm.style.color = inactive;
+      btnAc.style.background = inactive; btnAc.style.color = active;
+    } else {
+      btnAc.style.background = active;   btnAc.style.color = inactive;
+      btnPm.style.background = inactive; btnPm.style.color = active;
+    }
+  }
+}
+
+function setMesGlobal(v) {
+  // Update global month bar buttons
+  document.querySelectorAll('[id^="gmb-"]').forEach(function(b) {
+    var isAcum = v === 'acumulado';
+    var isThis = b.id === 'gmb-' + v;
+    if (b.id === 'gmb-acumulado') {
+      b.style.background = isAcum ? '#6366f1' : '#fff';
+      b.style.color      = isAcum ? '#fff'    : '#6366f1';
+      b.style.borderColor= '#6366f1';
+    } else {
+      b.style.background = isThis ? '#0f172a' : '#fff';
+      b.style.color      = isThis ? '#fff'    : '#475569';
+      b.style.borderColor= isThis ? '#0f172a' : '#cbd5e1';
+    }
+  });
+  if (v === 'acumulado') {
+    // Switch diagnóstico to acumulado view
+    if (typeof switchDiagView === 'function') switchDiagView('acumulado');
+    // Navigate to diagnóstico tab if not already there
+    if (typeof showTab === 'function') showTab('diag');
   } else {
-    btnAc.style.background = active;   btnAc.style.color = inactive;
-    btnPm.style.background = inactive; btnPm.style.color = active;
+    // Switch to por-mes view and update month
+    if (typeof switchDiagView === 'function') switchDiagView('pormes');
+    if (typeof window.switchMonth === 'function') window.switchMonth(v);
   }
 }
 
