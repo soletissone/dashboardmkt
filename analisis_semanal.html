@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Dashboard Conversion 2026 · v1783530635</title>
+<title>Dashboard Conversion 2026 · v1783532890</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f8;color:#1e293b;font-size:13px}
@@ -3761,9 +3761,9 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f8;color:#1e293b;fo
     });
 
     // Show/hide per-month rich 2x2 bucket grids
-    MONTH_KEYS.forEach(function(mk) {
-      var el = document.getElementById('diag-buckets-' + mk);
-      if (el) el.style.display = mk === m ? 'grid' : 'none';
+    document.querySelectorAll('[id^="diag-buckets-"]').forEach(function(bel) {
+      var mk = bel.id.replace('diag-buckets-', '');
+      bel.style.display = mk === m ? 'grid' : 'none';
     });
   };
 
@@ -3937,6 +3937,11 @@ function setMesGlobal(v) {
       b.style.color      = isThis ? '#fff'    : '#475569';
       b.style.borderColor= isThis ? '#0f172a' : '#cbd5e1';
     }
+  });
+  // Show/hide per-month 2x2 bucket grids (always, regardless of other logic)
+  document.querySelectorAll('[id^="diag-buckets-"]').forEach(function(el) {
+    var mk = el.id.replace('diag-buckets-', '');
+    el.style.display = (v !== 'acumulado' && mk === v) ? 'grid' : 'none';
   });
   if (v === 'acumulado') {
     // Switch diagnóstico to acumulado view
